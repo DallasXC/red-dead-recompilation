@@ -1,0 +1,37 @@
+[
+  {
+    "start": "0x001890DC",
+    "end": "0x001890E3",
+    "why": "CRT memcpy (sub_00188F80): trail-byte arm 0 of the table at 0x001890CC (copy nothing, return dst). The unaligned short-copy path at 0x00188FD4 reaches it through jmp [ecx*4+0x001890DC] with ecx in -4..-1, an indirect jump the recompiler cannot follow into the function's own labels."
+  },
+  {
+    "start": "0x001890E4",
+    "end": "0x001890EF",
+    "why": "CRT memcpy: trail-byte arm 1 (copy one byte, return dst), reached the same way. Unresolved, every copy of one byte to an unaligned destination copied nothing: [ICALL] Failed to resolve VA 0x001890E4, 155 times in a Windows run that later crashed."
+  },
+  {
+    "start": "0x00189104",
+    "end": "0x0018911B",
+    "why": "CRT memcpy (sub_00188F80): last arm of its trail-byte table at 0x001890CC (copy 3 bytes, leave, ret). The disassembler split the table's arms off the function and found this one nowhere, so every copy ending in three odd bytes was an unresolvable dispatch that copied nothing."
+  },
+  {
+    "start": "0x0018C0E4",
+    "end": "0x0018C0E5",
+    "why": "CRT x87 math special-case table (0x0040E6EE): 'ret'. Reached by jmp [ebx] from sub_0018C0xx."
+  },
+  {
+    "start": "0x0018C0EC",
+    "end": "0x0018C0F3",
+    "why": "CRT x87 math special-case table (0x0040ADF0): fstp st0, then falls into 0x0018C0EE (fstp st0; fldz; ret). Unresolved at run time in game: [ICALL] Failed to resolve VA 0x0018C0EC."
+  },
+  {
+    "start": "0x0018C0FA",
+    "end": "0x0018C125",
+    "why": "CRT x87 math special-case table (0x0040B3E2 and others): store/reload, set a status byte, ret."
+  },
+  {
+    "start": "0x0018C18E",
+    "end": "0x0018C1AB",
+    "why": "CRT x87 math special-case table (0x0040B1E4 and on): fstp st0 twice, fld the constant at 0x0040B280, set a status byte unless already set, ret. Unresolved at run time with two of the 2002 preview's levels as Showdown stages (lvl_tng, lvl_flash): [ICALL] Failed to resolve VA 0x0018C18E, then a crash."
+  }
+]

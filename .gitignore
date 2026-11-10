@@ -1,0 +1,28 @@
+# Derived from your copy of the game -- never commit or share
+src/recomp/gen/
+build/
+build-*/
+*.xbe
+*.dat
+*.bik
+logs/
+Logs/
+saves/
+Saves/
+/mods/
+/Mods/
+xbox_kernel.log
+settings.ini
+__pycache__/
+*.pyc
+
+# The ready-to-play folder and the toolkit, made by build.bat
+/Red Dead Recompilation/
+/deps/
+
+# Never commit: disc images, dumps and recordings
+*.iso
+*.xiso
+*.dmp
+*.wav
+*.patch.orig

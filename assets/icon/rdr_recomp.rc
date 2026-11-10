@@ -1,0 +1,11 @@
+/* The exe's icon (resource 1: the game window's class takes it too,
+ * nv2a_gl.c LoadIconA(..., 1)). Drawn by tools/make_icon.py: a revolver's
+ * cylinder, end on, cream on the menus' red, with the banner's diamond. */
+1 ICON "rdr.ico"
+
+/* The application manifest (UTF-8 code page, DPI awareness). Visual Studio's
+ * linker embeds its own, merged with rdr.manifest from the sources
+ * (CMakeLists.txt); MinGW's has none, so it comes from here. */
+#ifdef RDR_RC_MANIFEST
+1 24 "rdr.manifest"
+#endif

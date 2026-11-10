@@ -1,0 +1,8 @@
+# Keep the toolkit patch byte-exact (it must apply to LF sources).
+*.patch -text
+# Batch files need CRLF to run reliably in cmd.exe.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# GitHub's issue forms: not in source archives (docs/dev is: the README
+# and the changelog link to its development log)
+.github/ export-ignore
