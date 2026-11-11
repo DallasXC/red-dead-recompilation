@@ -552,8 +552,11 @@ build installed it), and about 2 GB of free space.
 
 - **Showdown**: the line-up has more pages. Push the hand past the right
   edge of the photo (or click the arrows) to turn to the next page: the
-  preview's characters are on page 2, the story's people on page 3 (on
-  page 2 when the preview's are off: a page with nobody on it is skipped). The
+  preview's characters are on page 2, the story's people on pages 3 and 4
+  (2 and 3 when the preview's are off: a page with nobody on it is
+  skipped). The line-up has room for up to 400 characters over 8 pages,
+  the game's 48 included; the extras fill 163, and the rest is room for
+  mods. The
   preview's stages are in the stage list, marked (2002) where the retail
   game has a stage of the same name.
 - **Story**: F1 > **Play As** (or the chapter book's Play As) lists them

@@ -544,10 +544,10 @@ the preview's Red, animated.
 ## The story's people in Showdown
 
 `tools\mods\story_npcs.py add <game folder> <mods folder>` (run by
-`make_preview.bat` after the preview) adds 39 of the story's characters the
+`make_preview.bat` after the preview) adds 59 of the story's characters the
 line-up never offers (Brimstone's shopkeepers and townsfolk, Father
 Driscoll, Wilbur (the duel on the train), the train's conductor, "Hatchet" Schultz, soldiers, braves,
-bandits) on the line-up's third page, in three rows. Each is the game's
+bandits) on the line-up's pages after the preview's, 42 to a page. Each is the game's
 own story character from swat.dat (its .cr, .dam, .sphs, .hot: model,
 skeleton and face as in the story) under a new code (`w..`), with Red's
 weapons, unlock row and hit points (a townsman has few), and Red's moves:
@@ -568,8 +568,13 @@ is. Three whose models are still in the old text format are left out
 The line-up page holds at most 150 elements (its element list at `+0x40`,
 the count at `+0x298`; `sub_00019EF0` adds past the end): the photo, paper
 and group, and one marker a character: 158 characters crashed the
-poster's loading. 48 retail + 55 preview + 39 = 142; the tool stops
-adding at 144 markers.
+poster's loading. The recompiled game now keeps the markers past the
+150th in a list of its own (`src/rdr_hooks.c`, the hooks on `sub_00019EF0`
+and `sub_00019D60`), so the line-up takes up to 400 markers over 8 pages,
+the game's 48 included: up to 352 new characters. The extras use 115 of
+them (56 preview, 59 story), 163 in all; the tools stop adding at 400.
+Play As has a list of its own, of up to 240 characters (the game's 54 and
+186 more): a mod character past that is on the line-up only.
 
 ## The January 2002 preview ("Red Dead Revolved", PS2)
 

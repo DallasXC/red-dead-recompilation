@@ -52,9 +52,12 @@ once.
 
 ### 🤠 Play as anyone, in the story and in Showdown
 Any Showdown character can play the story (**Play As**). The Showdown
-line-up grows to **up to 400 characters over 8 pages**: the story's own
-people (Brimstone's townsfolk, Jesse Lynch, Katie O'Grady, Colonel
-Darren, Atlas and more) and the 2002 preview's characters.
+line-up has room for **up to 400 characters over 8 pages**: the game's own
+48 and up to 352 new ones. The optional extras (launcher > Extras) fill 115
+of those places: 59 of the story's own people (Brimstone's townsfolk,
+Jesse Lynch, Katie O'Grady, Colonel Darren, Atlas and more) and 56 of the
+2002 preview's characters, 163 in all over 4 pages. The rest of the room
+is there for mods.
 
 ### 🗂️ The lost 2002 preview, playable
 The January 2002 PS2 preview ("Red Dead Revolved") had characters and

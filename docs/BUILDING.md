@@ -156,7 +156,7 @@ describes the parts meant to go upstream.
 | `src/rdr_overrides.c` | Red Dead Revolver-specific patches, keyed by guest VA |
 | `names/string_names.json` | 101 function names recovered from the game's own log strings |
 | `build.bat`, `play.bat`, `play_debug.bat` | one-click build and launch on Windows |
-| `make_preview.bat`, `play_preview.bat` | the 2002 preview's characters and stages in Showdown, and 39 of the story's own people (Brimstone's townsfolk and shopkeepers, Wilbur from the train, soldiers, braves) on a third line-up page (`mods_preview`, played on a copy of your saves; Bat Boy flies with Black while his gun is drawn, or the melee button while it is put away) |
+| `make_preview.bat`, `play_preview.bat` | the 2002 preview's characters and stages in Showdown, and 59 of the story's own people (Brimstone's townsfolk and shopkeepers, Wilbur from the train, soldiers, braves) on the line-up's later pages (`mods_preview`, played on a copy of your saves; Bat Boy flies with Black while his gun is drawn, or the melee button while it is put away) |
 | `tools/build.ps1` | what `build.bat` runs: prerequisites, toolkit, regen, compile |
 | `tools/regen.sh`, `tools/regen.ps1` | run the xboxrecomp pipeline and regenerate `src/recomp/gen/` |
 | `tools/apply_names.py` | applies `names/*.json` to the disassembly before lifting |

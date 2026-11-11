@@ -193,7 +193,7 @@ items).
   could make the game drop the music (178).
 - Logs: a game whose picture stands still for 20 s writes where it is
   stopped to the log, and goes on (178).
-- Showdown line-up: **more than 144 characters** (up to 400, 8 pages), and
+- Showdown line-up: **more than 144 characters** (room for up to 400 in all, the game's 48 included, over 8 pages), and
   19 more of the story's people (set them up again) (177).
 - Logs: what the music's voice does (turned off, silent, stopped) is
   written to the log, to find why the music cuts out (176).
