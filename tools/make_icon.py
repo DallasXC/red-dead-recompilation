@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math, random
-# Writes assets/icon/rdr.ico (the exe's icon) and icon_1024.png here. Needs Pillow.
+# Writes assets/icon/rdr.ico (the exe's icon), assets/icon/icon.png (512 x 512,
+# for project listings that ask for a picture) and icon_1024.png here. Needs Pillow.
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 S=1024
 def lerp(a,b,t): return tuple(int(a[i]+(b[i]-a[i])*t) for i in range(len(a)))
@@ -81,6 +82,7 @@ for s in sizes:
 import os
 out=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','assets','icon','rdr.ico')
 imgs[0].save(out,sizes=[(s,s) for s in sizes],append_images=imgs[1:])
+big.resize((512,512),Image.LANCZOS).save(os.path.join(os.path.dirname(out),'icon.png'),optimize=True)
 # preview sheet
 sheet=Image.new('RGBA',(256+128+64+48+32+24+16+80+20,280),(240,240,240,255))
 x=10
