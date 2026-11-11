@@ -1,7 +1,7 @@
 /*
  * rdr_settings.c - settings.ini: plain "key = value" lines.
  *
- * Where: RDR_SETTINGS if set (play.bat points it at the project folder),
+ * Where: RDR_SETTINGS if set (tests point it elsewhere),
  * else beside the executable.
  */
 #include "rdr_settings.h"

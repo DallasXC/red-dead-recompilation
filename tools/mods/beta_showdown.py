@@ -7,7 +7,7 @@ that play as stages (beta_level.py), into one mods folder. EXPERIMENTAL.
   python tools\\mods\\beta_showdown.py <preview .iso or SWAT.ZIP> <game folder> <mods folder>
 
 Takes a few minutes (each stage is two archives of ~30 MB). Start from a
-mods folder without them (a new one: play_preview.bat uses mods_preview).
+mods folder without them (the launcher's Extras page makes Mods\\Preview new).
 The stages are the ones a two-player match was seen to load and play in
 (docs/MODDING.md has the list and the ones left out, and why).
 """

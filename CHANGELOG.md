@@ -6,6 +6,15 @@ grouped by area, newest work first within each. The full story, fix by fix, is t
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
+## Since 1.1.0
+
+- Only `build.bat` and `play_debug.bat` are left at the top of the
+  project: `play.bat`, `make_preview.bat` and `play_preview.bat` are gone
+  (the play folder's exe starts the game, and the launcher's Extras page
+  sets up the preview's characters and stages).
+- The icon as a 512 x 512 PNG (`assets/icon/icon.png`); the trailer and the
+  Discord server on the README.
+
 ## 1.1.0: first public release (November 2026)
 
 ### Controls

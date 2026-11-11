@@ -11,8 +11,8 @@ data practical:
 
 ## The mods folder
 
-`play.bat` creates `mods\` next to itself and points the game at it
-(`RECOMP_MODS_DIR`). When the game opens a file from the disc, it first
+The play folder has a `Mods\` folder, and the game looks in it by itself
+(another folder can be given with `RECOMP_MODS_DIR`). When the game opens a file from the disc, it first
 looks in `mods\` at the same relative path, and if a file is there it reads
 that one instead:
 
@@ -543,8 +543,8 @@ the preview's Red, animated.
 
 ## The story's people in Showdown
 
-`tools\mods\story_npcs.py add <game folder> <mods folder>` (run by
-`make_preview.bat` after the preview) adds 59 of the story's characters the
+`tools\mods\story_npcs.py add <game folder> <mods folder>` (run by the
+launcher's Extras page after the preview) adds 59 of the story's characters the
 line-up never offers (Brimstone's shopkeepers and townsfolk, Father
 Driscoll, Wilbur (the duel on the train), the train's conductor, "Hatchet" Schultz, soldiers, braves,
 bandits) on the line-up's pages after the preview's, 42 to a page. Each is the game's
@@ -685,7 +685,7 @@ What the build does to each level besides converting it:
 **The way players set them up** is the launcher's Extras page (see the
 [user guide](USER_GUIDE.md#the-2002-preview-characters)), which runs
 `setup_preview.py <preview .iso or SWAT.ZIP> <game folder> <out folder>`
-(`make_preview.bat` runs the same into `mods\Preview`): numpy and Pillow
+(into the play folder's `Mods\Preview`): numpy and Pillow
 installed if missing, `beta_showdown.py` (below), `story_npcs.py`, all into
 `<out>.new`, which takes `<out>`'s place only when everything is in. It
 prints `PROGRESS <percent> <what>` lines for the launcher.

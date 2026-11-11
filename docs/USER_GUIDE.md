@@ -62,8 +62,7 @@ in `Saves\Online`).
 (api.github.com) once whether there is a newer release, and shows a link
 if there is. Nothing is downloaded or installed, and nothing about you or
 your game is sent. Switch it off on the launcher's About page (**Check for
-updates**), or with `update_check = 0` in `settings.ini`. (Started with `play.bat` from the project folder instead, the
-game uses the project's own `settings.ini`, `saves\`, `mods\` and `logs\`.)
+updates**), or with `update_check = 0` in `settings.ini`.
 
 ## Controllers
 

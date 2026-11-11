@@ -341,8 +341,8 @@ static void rdr_default_env(void)
  * The exe sees that layout beside itself (or knows it is that exe by its
  * name) and needs nothing else: no .bat, no paths. A disc image given to it
  * (dragged onto it), or picked in the window it opens when Game\ has no
- * game, is unpacked into Game\ first (iso_install.c). Without the layout -- run from the
- * project's play.bat, or with a game folder named -- nothing here applies. */
+ * game, is unpacked into Game\ first (iso_install.c). Without the layout (a game folder
+ * named on the command line) nothing here applies. */
 extern int rdr_install_iso(const char *image, const char *dest);
 
 static char s_exe_dir[1024];            /* with its trailing separator */

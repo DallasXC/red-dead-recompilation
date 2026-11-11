@@ -51,9 +51,7 @@ goes on.
    project's GitHub releases) for controller support. Running it again
    only redoes what changed.
 2. Play from the **Red Dead Recompilation** folder it makes inside the
-   project: start **Red Dead Revolver.exe**. (`play.bat` in the project
-   starts the same build with the project's own `settings.ini`, `saves\`,
-   `mods\` and `logs\`.)
+   project: start **Red Dead Revolver.exe**.
 
 **Which compiler:** the first build asks: Visual Studio (the default) or
 Clang. The answer is kept in `deps\compiler.txt`; `build.bat -Compiler
@@ -85,8 +83,15 @@ more frames. Builds with and without it play online together (a host at
 `-DRDR_GEN_O2=ON`.
 
 Options: `build.bat -Clean` rebuilds from scratch; `build.bat -Iso "D:\game.iso"`
-unpacks that image; `build.bat -Game "D:\other\path"`
-and `play.bat "D:\other\path"` point at a disc folder elsewhere.
+unpacks that image; `build.bat -Game "D:\other\path"` points at a disc
+folder elsewhere.
+
+**Diagnostics.** For a bug that needs more than the usual log,
+`play_debug.bat` runs the game once with extras: it records the game's
+sound to `logs\audio.wav` (2 minutes), logs the controllers and keys once
+a second, and every 2 s what each game thread last asked the kernel for.
+Play as far as needed, close the window, and send `logs\last_run.log` (and
+`audio.wav` if asked).
 
 The play folder is assembled by `tools/package.ps1` after each build; see
 the [user guide](USER_GUIDE.md#the-play-folder).
@@ -155,8 +160,8 @@ describes the parts meant to go upstream.
 | `src/recomp_manual.c` | indirect-call hooks, from the toolkit template |
 | `src/rdr_overrides.c` | Red Dead Revolver-specific patches, keyed by guest VA |
 | `names/string_names.json` | 101 function names recovered from the game's own log strings |
-| `build.bat`, `play.bat`, `play_debug.bat` | one-click build and launch on Windows |
-| `make_preview.bat`, `play_preview.bat` | the 2002 preview's characters and stages in Showdown, and 59 of the story's own people (Brimstone's townsfolk and shopkeepers, Wilbur from the train, soldiers, braves) on the line-up's later pages (`mods_preview`, played on a copy of your saves; Bat Boy flies with Black while his gun is drawn, or the melee button while it is put away) |
+| `build.bat` | one-click build on Windows (the play folder's exe starts the game; the launcher's Extras page sets up the 2002 preview's characters and stages and the story's own people) |
+| `play_debug.bat` | one run with diagnostics, for bug reports (see Diagnostics above) |
 | `tools/build.ps1` | what `build.bat` runs: prerequisites, toolkit, regen, compile |
 | `tools/regen.sh`, `tools/regen.ps1` | run the xboxrecomp pipeline and regenerate `src/recomp/gen/` |
 | `tools/apply_names.py` | applies `names/*.json` to the disassembly before lifting |
