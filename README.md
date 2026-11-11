@@ -16,6 +16,10 @@ cheats, co-op and mods on top.
 **No game files included.** You need your own copy of the Red Dead Revolver
 (USA) Xbox disc. Everything game-derived is made on your PC from it.
 
+**[Watch the trailer on YouTube](https://www.youtube.com/watch?v=3C-nZWY-0F4)**
+
+[<img src="https://img.youtube.com/vi/3C-nZWY-0F4/hqdefault.jpg" alt="Red Dead Recompilation trailer" width="560">](https://www.youtube.com/watch?v=3C-nZWY-0F4)
+
 </div>
 
 > [!IMPORTANT]
