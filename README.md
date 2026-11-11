@@ -12,6 +12,7 @@ cheats, co-op and mods on top.
 ![Game](https://img.shields.io/badge/game-Red%20Dead%20Revolver%20(Xbox%2C%20USA)-b03a2e?style=flat-square&labelColor=1a1410)
 ![Status](https://img.shields.io/badge/status-playable%2C%20in%20development-d4a24c?style=flat-square&labelColor=1a1410)
 ![Built on](https://img.shields.io/badge/built%20on-xboxrecomp-5b7a8c?style=flat-square&labelColor=1a1410)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?style=flat-square&logo=discord&logoColor=white&labelColor=1a1410)](https://discord.gg/u5MNF3FDfk)
 
 **No game files included.** You need your own copy of the Red Dead Revolver
 (USA) Xbox disc. Everything game-derived is made on your PC from it.
@@ -304,6 +305,10 @@ Each start writes `Logs\last_run.log` in the play folder (the one before
 it is kept as `previous_run.log`). Open an issue with the log attached and
 what you were doing; a short video helps a lot. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For questions, help getting it running, and to share what you make, join
+the **[Discord server](https://discord.gg/u5MNF3FDfk)**. Bugs are best reported as issues here,
+so they are not lost.
 
 ## How it works
 
