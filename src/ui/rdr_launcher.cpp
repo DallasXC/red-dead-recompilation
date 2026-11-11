@@ -203,7 +203,7 @@ static void about_version(RdrSettings *s, bool *ch)
     int st = rdr_update_state(&tag, &url);
     char v[96];
     if (st == RDR_UPDATE_NEWER)
-        snprintf(v, sizeof v, "%s -- %s is out", rdr_version(), tag);
+        snprintf(v, sizeof v, "%s (%s is out)", rdr_version(), tag);
     else if (st == RDR_UPDATE_CURRENT)
         snprintf(v, sizeof v, "%s (the latest)", rdr_version());
     else if (st == RDR_UPDATE_CHECKING)
