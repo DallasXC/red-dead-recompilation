@@ -107,7 +107,7 @@ def cmd_import(dds, orig, dst):
         sys.exit(f"{dds}: {w}x{h} -- the sides must be powers of two")
     old = len(levels(ow, oh, four, cap, len(od) - 14))
     if old > 1 and mips == 1:
-        print(f"note: the original has {old} mip levels and this DDS none -- "
+        print(f"note: the original has {old} mip levels and this DDS none; "
               f"it will shimmer at a distance; save with mipmaps")
     body, off, lw, lh = b"", 128, w, h
     for _ in range(mips):

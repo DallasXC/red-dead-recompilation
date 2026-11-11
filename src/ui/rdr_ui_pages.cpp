@@ -163,9 +163,9 @@ bool PageGraphics(RdrSettings *s, bool live)
     ch |= Choice("Upscaling", &s->sharp_filter, filter_items, 2,
                  "How the picture is scaled to the window: smooth, or sharp square pixels.");
     ch |= Toggle("Sharp game text", &s->sharp_text,
-                 live ? "The game's own lettering -- menus, subtitles, the money -- redrawn four times "
+                 live ? "The game's own lettering (menus, subtitles, the money) redrawn four times "
                         "finer from its own fonts. Takes effect the next time the game starts."
-                      : "The game's own lettering -- menus, subtitles, the money -- redrawn four times "
+                      : "The game's own lettering (menus, subtitles, the money) redrawn four times "
                         "finer from its own fonts, so it stays sharp on big screens.");
     ch |= Toggle("Dump textures", &s->dump_textures,
                  "For making texture packs: every texture the game loads is saved to texture_dump\\ "
@@ -454,7 +454,7 @@ bool PageExtras(RdrSettings *s, bool live)
              "and Showdown, with or without the preview characters.");
     else
         Note("The story's townsfolk, soldiers, Atlas and the rest, for Play As, story co-op and "
-             "Showdown. Made from your copy of the game -- no other disc needed -- in a few "
+             "Showdown. Made from your copy of the game (no other disc needed) in a few "
              "minutes.");
     if (rdr_people_ready() && rdr_people_old() && !(rdr_preview_ready() && s->preview))
         Note("Made by an older version of the setup, which wrote files the game can crash on, and "

@@ -173,7 +173,7 @@ int rdr_freecam_hint(char *out, int n)
         len = strlen(d);
         snprintf(d + len, sizeof fly - len, "%splayer %d's controller", len ? ", " : "", p + 1);
     }
-    snprintf(out, (size_t)n, "Free camera -- flying it: %s.  Playing: %s.  (F1 to change)",
+    snprintf(out, (size_t)n, "Free camera. Flying it: %s.  Playing: %s.  (F1 to change)",
              fly[0] ? fly : "nobody", play[0] ? play : "nobody");
     return 1;
 }

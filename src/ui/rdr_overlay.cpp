@@ -923,15 +923,15 @@ bool rows_coop()
     if (np > 0 && Choice("Screen", &sp, screens, 4,
                          "Shared: everyone on player 1's camera. Split: a view each "
                          "(three or four players: quarters). Separate windows: player 1 in the "
-                         "game's window, each other player in a window of their own -- drag it to "
-                         "another monitor; F11 or a double click there fills that monitor. "
+                         "game's window, each other player in a window of their own (drag it to "
+                         "another monitor; F11 or a double click there fills that monitor). "
                          "Changes at once.")) {
         g_rdr_settings.coop_split = sp;
         rdr_settings_save(&g_rdr_settings);
     }
     static const char *loadouts[] = { "Shared", "Each player's own" };
     if (np > 0 && Choice("Weapons and money", &g_rdr_settings.coop_loadout, loadouts, 2,
-                         "Shared: one purse -- what anyone earns is player 1's to spend in the shop, and "
+                         "Shared: one purse. What anyone earns is player 1's to spend in the shop, and "
                          "player 1's weapons and loadout go to every player. Each player's own: players "
                          "2-4 keep their own money and weapons from chapter to chapter and buy on the Co-op "
                          "Shop page (PC Options, or the Quick menu)."))
@@ -940,7 +940,7 @@ bool rows_coop()
     if (np > 0 && Choice("Duels", &g_rdr_settings.coop_duels, duels, 2,
                          "Player 1: the story's duels are player 1's, as in a one-player game, and the "
                          "others wait. Every player: when player 1 duels, players 2-4 duel the same "
-                         "opponent at the same time -- draw and shoot together; the first good shot wins."))
+                         "opponent at the same time: draw and shoot together; the first good shot wins."))
         rdr_settings_save(&g_rdr_settings);
     if (np > 0 && Toggle("Friendly fire", &g_rdr_settings.coop_friendly_fire,
                          "Off: the players' bullets do not hurt each other (enemies "
@@ -1004,8 +1004,8 @@ bool page_cheats()
         rdr_settings_save(&g_rdr_settings);
     if (g_rdr_settings.town_guns
         && Toggle("Townsfolk Come Back", &g_rdr_settings.town_respawn,
-                  "With Guns in Town: Brimstone's people who are shot dead -- the shopkeepers, the "
-                  "paper boy and the rest -- come back at their own places about a minute later."))
+                  "With Guns in Town: Brimstone's people who are shot dead (the shopkeepers, the "
+                  "paper boy and the rest) come back at their own places about a minute later."))
         rdr_settings_save(&g_rdr_settings);
     if (Toggle("Protect Allies", &g_rdr_settings.protect_friendly,
                "The people on your side or not in the fight take no damage: the barmaids in the "
@@ -1195,7 +1195,7 @@ bool page_online()
             Choice("Players", &players, counts, 3, "How many will play, you included.");
             if (Toggle("Internet address in the code", &g_rdr_settings.online_share_ip,
                        "On: the code also holds this PC's internet (public IP) address, for friends "
-                       "joining over the internet with UDP port 27032 forwarded -- anyone with the "
+                       "joining over the internet with UDP port 27032 forwarded. Anyone with the "
                        "code can read that address, so give it only to people you trust. Off: only "
                        "home-network and VPN addresses (Tailscale, ZeroTier), which strangers cannot "
                        "reach or use to find you."))
@@ -1252,7 +1252,7 @@ bool page_online()
         int sm = rdr_lobby_get_start();
         if (Choice("Start in", &sm, starts, 3,
                    "Where everyone's game goes once it starts again. Continue and New go there by "
-                   "themselves -- past the title, the desk and the book, straight into loading -- "
+                   "themselves (past the title, the desk and the book, straight into loading) "
                    "with your save's profile (the one you played last); nobody needs to press "
                    "anything. The menus: you work them with your controller, as before."))
             rdr_lobby_set_start(sm);
@@ -1497,8 +1497,8 @@ static void new_people_rows_in(int player, const char *front)
         Note("This level has only animals to copy: pick one of them above.");
     else {
         Picker("Acts like", &act, act_items, nacts,
-               "How they behave: as this person does (their walking about, fighting, talking) -- this "
-               "level's people first, then the other chapters'. Someone from another chapter may need "
+               "How they behave: as this person does (their walking about, fighting, talking). The list "
+               "has this level's people first, then the other chapters'. Someone from another chapter may need "
                "things this level does not have: if they do nothing, try another. A to search.");
         Choice("Side", &side, sides, 3,
                "As that person: their own side. Against you: they fight the players. On your side: they "
@@ -1520,7 +1520,7 @@ static void new_people_rows_in(int player, const char *front)
                "As their side: armed when against you or on your side, unarmed otherwise. None: no guns. "
                "Armed: guns whatever their side.");
         Choice("Health bar", &boss, offon, 2,
-               "On: each one is a boss -- their name and health bar on screen, as the level's bosses "
+               "On: each one is a boss, with their name and health bar on screen, as the level's bosses "
                "have.");
     }
     static char hint[260];

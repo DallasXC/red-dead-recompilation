@@ -485,7 +485,7 @@ int rdr_ls_status(char *buf, int n)
     if (rdr_lockstep_mode() != 4)
         return 0;
     if (s_parted_at != 0xFFFFFFFFu)
-        snprintf(buf, (size_t)n, "Online: the games parted at frame %u -- restart to play on", (unsigned)s_parted_at);
+        snprintf(buf, (size_t)n, "Online: the games parted at frame %u. Restart to play on", (unsigned)s_parted_at);
     else if (s_wait_state == 2)
         snprintf(buf, (size_t)n, s_host ? "Online: waiting for the other players to join..." : "Online: looking for the host...");
     else if (s_wait_state == 1)

@@ -162,7 +162,7 @@ bool page_welcome(RdrSettings *s)
     static const char *bars_items[] = { "Off", "In cutscenes only", "Always (as the game)" };
     static const char *play_items[] = { "A controller", "Keyboard and mouse" };
     static const char *res_items[] = { "Original (480 lines)", "2x", "3x (1440p screens)", "4x (4K screens)" };
-    Note("Welcome. A few choices before the first game -- all of them can be changed later, "
+    Note("Welcome. A few choices before the first game; all of them can be changed later, "
          "here or in the game's PC Options.");
     int fs = s->fullscreen ? 2 : s->borderless ? 1 : 0;
     if (Choice("Display mode", &fs, fs_items, 3, "Fullscreen is borderless, on the game's monitor; "
@@ -336,7 +336,7 @@ void frame(int w, int h)
         const char *tag = "";
         if (rdr_update_state(&tag, nullptr) == RDR_UPDATE_NEWER) {
             char t[96];
-            snprintf(t, sizeof t, "%s is out -- About", tag);
+            snprintf(t, sizeof t, "%s is out: see About", tag);
             ImVec2 ts = g_fonts.small->CalcTextSizeA(g_fonts.small->FontSize, FLT_MAX, 0, t);
             ImVec2 at(P(cx, 0).x - ts.x * 0.5f, P(0, 650).y);
             dl->AddText(g_fonts.small, g_fonts.small->FontSize, at, IM_COL32(240, 200, 90, 255), t);
@@ -542,7 +542,7 @@ void frame_game(int w, int h)
         const char *tag = "";
         if (rdr_update_state(&tag, nullptr) == RDR_UPDATE_NEWER) {
             char t[96];
-            snprintf(t, sizeof t, "%s is out -- About", tag);
+            snprintf(t, sizeof t, "%s is out: see About", tag);
             float tw = Width(kText, t, 1.0f, &sp);
             ImVec2 a(sp.X(228) - tw * 0.5f, sp.Y(722 + ep)), b(sp.X(228) + tw * 0.5f, sp.Y(748 + ep));
             if (ImGui::IsMouseHoveringRect(a, b) && ImGui::IsMouseClicked(0))
