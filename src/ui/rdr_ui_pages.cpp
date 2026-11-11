@@ -390,9 +390,12 @@ bool PageExtras(RdrSettings *s, bool live)
     if (ready) {
         ch |= Toggle("Preview characters", &s->preview,
                      live ? "The 2002 preview's characters and stages in Showdown and Play As. "
+                            "The stages are ported as they are on that unfinished disc, and some may "
+                            "not work properly as Showdown stages. "
                             "Takes effect the next time the game starts."
                           : "The 2002 preview's characters and stages, and the story's townsfolk, "
-                            "in Showdown and Play As.");
+                            "in Showdown and Play As. The stages are ported as they are on that "
+                            "unfinished disc, and some may not work properly as Showdown stages.");
     } else if (st != 1) {
         Note("Not set up yet. You need a disc image of the January 2002 preview "
              "(PlayStation 2, \"Red Dead Revolved\"). Setting up takes 5 to 10 minutes "

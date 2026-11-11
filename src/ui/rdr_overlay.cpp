@@ -463,6 +463,34 @@ void pad_filter(DWORD port, XBOX_INPUT_STATE *st, int connected)
      * controller of its own; not while the free camera flies). */
     if ((int)port == rdr_kbm2_port() && !g_rdr_freecam)
         rdr_input_merge2(st);
+    /* The same after the keyboard and mouse are in: the Enter or the click
+     * that closed the menu (Go to Chapter's second press, say) is still
+     * down for a moment, and the keyboard's and mouse's own handling did
+     * not see it go down (it does not run while the menu is open), so it
+     * passed as a new A: on the desk's book, Begin on the first chapter,
+     * before the warp had swapped it (user: Go to Chapter from the main
+     * menu went to the first chapter; the log: "menu closed", then
+     * lvl_perfnew at once). Held A, B and Start wait for their release. */
+    {
+        static int seen_gen2[4];
+        static bool mask2[4];
+        int gen = s_close_gen;
+        if (seen_gen2[port] != gen) {
+            seen_gen2[port] = gen;
+            mask2[port] = true;
+        }
+        if (mask2[port]) {
+            XBOX_GAMEPAD &gp = st->Gamepad;
+            bool held = gp.bAnalogButtons[XBOX_BUTTON_A] > 64 || gp.bAnalogButtons[XBOX_BUTTON_B] > 64
+                     || (gp.wButtons & XBOX_GAMEPAD_START);
+            if (held) {
+                gp.bAnalogButtons[XBOX_BUTTON_A] = gp.bAnalogButtons[XBOX_BUTTON_B] = 0;
+                gp.wButtons &= (unsigned short)~XBOX_GAMEPAD_START;
+            } else {
+                mask2[port] = false;
+            }
+        }
+    }
     /* Every port: the controllers set to fly it (Free Camera's choices).
      * The declaration had lost the port argument when the function gained
      * it, so the call passed the state as the port and the camera never
@@ -2426,6 +2454,8 @@ void test_flag(void)
         g_rdr_settings.protect_friendly = v ? 1 : 0;
     else if (sscanf(cmd, "coopkill %d", &v) == 1)
         rdr_coop_test_kill(v);
+    else if (!strncmp(cmd, "overlay ", 8))
+        set_open(atoi(cmd + 8) != 0);          /* tests: the menu opened or closed */
     else if (!strncmp(cmd, "page", 4))
         rdr_menu_test_report();
     else if (!strncmp(cmd, "period", 6))

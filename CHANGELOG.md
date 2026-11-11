@@ -83,6 +83,11 @@ items).
   entry in the game's model list for every model a retail character
   lacks. It now only loads models that exist as files, and the heap
   checks its neighbours before joining them (220).
+- **Go to Chapter from the main menu** no longer ends up in the first
+  chapter: if a press reaches the book first, the warp goes on from that
+  level to the chapter (226).
+- The 2002 preview's stages are described as ported as they are, and
+  may not all work as Showdown stages.
 - **The frame rate is held at 60 in the stagecoach chapter** (Sunset
   Canyon): above 60 the chase still breaks; a known issue for now (224).
 - **PC Options: Accept saves and leaves the page**, back to the list

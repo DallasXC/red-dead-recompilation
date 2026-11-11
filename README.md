@@ -64,7 +64,9 @@ The January 2002 PS2 preview ("Red Dead Revolved") had characters and
 levels that never shipped. Point the launcher at your own copy of it and
 **56 of its characters** (an early Red, a long-coat Red, Pig Josh, Bat Boy
 who flies...) and **31 of its stages** (an unreleased mine, deathmatch
-arenas) join Showdown and Play As. And the **2002 look** gives the HUD and
+arenas) join Showdown and Play As. The stages are ported as they are on
+that early disc, unfinished: some may not work properly as Showdown
+stages. And the **2002 look** gives the HUD and
 pause menu the preview's style (the TIME clock, the revolver's rounds in
 an arc, the red Dead Eye badge, the curved blue bands) from art still
 on the retail disc.

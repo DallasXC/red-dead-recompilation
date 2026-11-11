@@ -558,7 +558,9 @@ build installed it), and about 2 GB of free space.
   the game's 48 included; the extras fill 163, and the rest is room for
   mods. The
   preview's stages are in the stage list, marked (2002) where the retail
-  game has a stage of the same name.
+  game has a stage of the same name. They are ported as they are on the
+  preview disc, which was an unfinished build: some may not work properly
+  as Showdown stages.
 - **Story**: F1 > **Play As** (or the chapter book's Play As) lists them
   after the game's own characters; pick one and start or restart a level.
   Story co-op's **Player 2-4 as** offer the same list.
@@ -649,6 +651,9 @@ was):
   from another chapter may stand still where that chapter's paths or
   scripts are missing, and some (the bridge's gunners) are not made at
   all where their cannon is missing.
+- **The 2002 preview's stages** are ported as they are on the preview
+  disc, an unfinished build: some may not work properly as Showdown
+  stages.
 - **Replacement movies** need Windows' own video decoder (any Windows 10
   or 11).
 - **The stagecoach chase above 60 frames a second** (Chapter 14, Sunset

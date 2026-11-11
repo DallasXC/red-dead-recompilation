@@ -1863,6 +1863,20 @@ static void warp_tick_level(void)
         }
         return;
     }
+    /* From the main menu, a press that reached the game before the warp
+     * had swapped the book's chapter started another level (user: Go to
+     * Chapter from the main menu went to the first chapter, lvl_perfnew,
+     * at once after the menu closed). Then the warp goes on from that
+     * level, as from any level: Start, the pause menu, straight to the
+     * chapter. */
+    if (s_warp_stage == 1 && s_warp_left && rdr_in_level() && strcmp(lv, "lvl_front")
+        && strcmp(lv, s_warp_name)) {
+        s_warp_left = 0;
+        s_warp_ns = now;
+        s_warp_press_ns = now;              /* Start in 1.5 s, once it runs */
+        fprintf(stderr, "[LEVEL] warp: '%s' started instead of the chapter; going on from it\n", lv);
+        fflush(stderr);
+    }
     if (s_warp_stage && s_warp_stage != 3 && now - s_warp_ns > 120000000000ull) {
         s_warp_stage = 0;                   /* two minutes: give up */
         fprintf(stderr, "[LEVEL] warp gave up\n");

@@ -2935,6 +2935,27 @@ the rest of the frame thrown away, and no step at all when the
     (settings.ini) and goes back to the list: or, for a page opened
     from the chapter book, back to the book. A and Enter on a row still
     change the row.
+226. **Go to Chapter from the main menu started the first chapter** (user:
+    "not properly sending the player to the chapter when in the main
+    menu"). The user's log: "warp to lvl_tomb 1 asked", "menu closed", and
+    lvl_perfnew loading at once, with none of the warp's book steps. A
+    press reached the game's book before the warp swapped the chapter
+    page's level, and Begin took the book's own (the first chapter).
+    Reproduced in the harness with A pressed every 0.6 s after the warp
+    was asked (with the user's current save: the warp alone, untouched,
+    still goes New, difficulty, chapter page, Begin, lvl_tomb).
+    - A warp still waiting (stage 1) that finds itself in another level
+      after the front end now goes on from that level, as from any level:
+      Start, the pause menu, straight to the chapter ("[LEVEL] warp:
+      'lvl_perfnew' started instead of the chapter; going on from it").
+      Harness: lvl_perfnew, Start, quit at once, lvl_tomb 1.
+    - The likely press: the Enter or click that closed the menu, still
+      down after it closed. The keyboard's and mouse's own handling does
+      not run while the menu is open, so it took the held key or button
+      for a new press. Held A, B and Start are now kept from the game
+      until released, after the keyboard and mouse are merged too (the
+      controller's were already). Not reproduced in the harness, whose
+      injected keys and clicks did not leak with or without this.
 
 ## Settings, launcher, overlay (src/ui)
 
