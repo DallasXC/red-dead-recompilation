@@ -2956,6 +2956,33 @@ the rest of the frame thrown away, and no step at all when the
       until released, after the keyboard and mouse are merged too (the
       controller's were already). Not reproduced in the harness, whose
       injected keys and clicks did not leak with or without this.
+227. **Update now** (user: "Is there any way we can have the launcher
+    automatically download and update the game?"). The game can never be
+    shipped built, so an update is the new release's source and a build on
+    the player's PC.
+    - Launcher, About: with the update check's answer newer
+      (`RDR_UPDATE_NEWER`) and the play folder inside the project it was
+      built in (the exe's folder's parent has `build.bat` and
+      `tools\update.ps1`), **Update now**, pressed twice, starts
+      `powershell -File tools\update.ps1 -Tag <tag> -WaitPid <this
+      process>` in a console of its own (the tag: digits, dots, a leading
+      v) and closes the launcher (`rdr_update_install`, rdr_update.c).
+    - `tools/update.ps1`: waits for the game to close; downloads
+      `github.com/DallasXC/red-dead-recompilation/archive/refs/tags/<tag>.zip`
+      over HTTPS into `deps\update`; checks it is one folder with
+      `build.bat`, `tools\build.ps1`, `VERSION` and `src\main.c`, and that
+      `VERSION` is the tag's; copies it over the project with robocopy (the
+      zip holds only the project's own files, so the play folder's
+      settings, saves, mods and logs, `deps\` and the game stay); deletes
+      what `tools\removed_files.txt` lists (play.bat, make_preview.bat,
+      play_preview.bat so far); runs `tools\build.ps1 -Yes` (the compiler
+      remembered in `deps\compiler.txt`, nothing asked); starts the play
+      folder's exe. A transcript goes to `Logs\update.log`; a failure says
+      where it stopped and waits for Enter.
+    - Tested here with PowerShell 7 on Linux against a dummy project:
+      v1.1.0 downloaded from GitHub, checked, copied over, the settings
+      file kept, then the real build.ps1 run (stopping, as it should, at no
+      disc). Not yet run on Windows.
 
 ## Settings, launcher, overlay (src/ui)
 

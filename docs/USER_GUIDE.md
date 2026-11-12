@@ -59,10 +59,22 @@ game and copy `UDATA` and `TDATA` from one of the backups back into
 in `Saves\Online`).
 
 **Update check.** When the launcher opens, it asks GitHub
-(api.github.com) once whether there is a newer release, and shows a link
-if there is. Nothing is downloaded or installed, and nothing about you or
-your game is sent. Switch it off on the launcher's About page (**Check for
-updates**), or with `update_check = 0` in `settings.ini`.
+(api.github.com) once whether there is a newer release, and shows it on the
+About page if there is. Nothing about you or your game is sent. Switch it
+off on the launcher's About page (**Check for updates**), or with
+`update_check = 0` in `settings.ini`.
+
+**Updating.** With a newer release out, the About page has **Update now**
+(press it twice). The launcher closes and a window opens that downloads
+the release from GitHub, copies it into your project folder and rebuilds
+the game, the same build `build.bat` does with the compiler you chose
+before. Your settings, saves, mods and game files stay as they are. It
+takes a few minutes, or up to 30 when the game's code has to be made
+again; the game starts again when it is done. Everything it does is in
+`Logs\update.log`. If the build fails, the new files are already in: run
+`build.bat` to try again. (Update now needs the project folder the game
+was built in, with `build.bat`; a play folder copied somewhere else is
+updated by building the new release yourself.)
 
 ## Controllers
 

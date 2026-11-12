@@ -6,6 +6,13 @@ grouped by area, newest work first within each. The full story, fix by fix, is t
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
+## Since 1.1.1
+
+- **Update now** (launcher > About): with a newer release out, the
+  launcher downloads it from GitHub, copies it into the project (settings,
+  saves, mods and game files stay), rebuilds the game and starts it again
+  (`tools/update.ps1`, logged to `Logs\update.log`) (227).
+
 ## 1.1.1 (November 2026)
 
 - **Keyboard and mouse are on by default** for a new settings file, and

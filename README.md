@@ -282,8 +282,11 @@ not have: if they just stand there, try another way of acting.
   copies them to `Saves\Backup\1` first (the two copies before it are kept
   as `2` and `3`).
 - **Network**: the launcher asks GitHub once a start whether there is a
-  newer release (nothing is downloaded or installed; it only shows a link).
-  Switch it off with **Check for updates** on the launcher's About page.
+  newer release, and shows it on the About page. Nothing is downloaded
+  unless you press **Update now** there, which downloads the new release
+  from GitHub and rebuilds the game (your settings, saves and mods stay).
+  Switch the check off with **Check for updates** on the launcher's About
+  page.
   Nothing else goes online unless you host or join an online game.
 - **Uninstalling**: everything the port makes is in the project folder:
   the play folder (**Red Dead Recompilation**: the program, `Game\`,

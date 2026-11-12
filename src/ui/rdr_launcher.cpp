@@ -214,9 +214,28 @@ static void about_version(RdrSettings *s, bool *ch)
                                                      : "This build of Red Dead Recompilation.")
         && st == RDR_UPDATE_NEWER)
         rdr_update_open_page();
+    /* Update now: download the newer release and rebuild, in a window of
+     * its own; the launcher closes (its exe is replaced). Twice, as it
+     * closes the game and takes minutes. */
+    if (rdr_update_can_install()) {
+        static bool armed;
+        char what[96];
+        snprintf(what, sizeof what, armed ? "Press again to update" : "Download %s and rebuild", tag);
+        if (Action("Update now", what,
+                   "Downloads the new release from GitHub, copies it into this project (your settings, saves and "
+                   "mods stay) and rebuilds the game: a few minutes, up to 30 when the game's code is made "
+                   "again. This window closes, and the game starts again when the build is done.")) {
+            if (!armed) {
+                armed = true;
+            } else if (rdr_update_install()) {
+                *ch = true;
+                s_result = 0;
+            }
+        }
+    }
     if (Toggle("Check for updates", &s->update_check,
                "When this window opens, ask GitHub whether a newer release is out. Nothing is "
-               "downloaded or installed by itself."))
+               "downloaded or installed unless you press Update now."))
     {
         *ch = true;
         if (s->update_check)

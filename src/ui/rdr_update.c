@@ -5,9 +5,12 @@
  * off (About: "Check for updates"), a background thread asks GitHub for the
  * project's latest release (api.github.com, .../releases/latest: its
  * "tag_name" and "html_url") and compares the tag with this build's version
- * (RDR_VERSION, from the VERSION file). Nothing is downloaded or installed:
- * a newer one is only shown, with a button that opens its page in the
- * browser. With no network, or no releases yet, it says nothing.
+ * (RDR_VERSION, from the VERSION file). Nothing is downloaded by the check:
+ * a newer one is shown, with a button that opens its page in the browser,
+ * and "Update now" (rdr_update_install), which the player presses: it
+ * starts tools\update.ps1 (download the release's source, copy it over the
+ * project, rebuild, start again) and the game closes. With no network, or
+ * no releases yet, it says nothing.
  */
 #include "rdr_update.h"
 
@@ -175,6 +178,66 @@ void rdr_update_open_page(void)
     if (s_url[0])
         ShellExecuteA(NULL, "open", s_url, NULL, NULL, SW_SHOWNORMAL);
 }
+
+/* The project folder this play folder was built in: the exe's folder's
+ * parent, when it has build.bat and tools\update.ps1 (the layout build.bat
+ * makes; a play folder copied elsewhere has none). */
+static int project_dir(char *out, size_t n)
+{
+    char exe[MAX_PATH], probe[MAX_PATH + 64];
+    char *p;
+    DWORD len = GetModuleFileNameA(NULL, exe, (DWORD)sizeof exe);
+    if (!len || len >= sizeof exe)
+        return 0;
+    if (!(p = strrchr(exe, '\\'))) return 0;
+    *p = 0;                                     /* the play folder */
+    if (!(p = strrchr(exe, '\\'))) return 0;
+    *p = 0;                                     /* the project */
+    snprintf(probe, sizeof probe, "%s\\build.bat", exe);
+    if (GetFileAttributesA(probe) == INVALID_FILE_ATTRIBUTES) return 0;
+    snprintf(probe, sizeof probe, "%s\\tools\\update.ps1", exe);
+    if (GetFileAttributesA(probe) == INVALID_FILE_ATTRIBUTES) return 0;
+    if (strlen(exe) >= n) return 0;
+    strcpy(out, exe);
+    return 1;
+}
+
+int rdr_update_can_install(void)
+{
+    char dir[MAX_PATH];
+    return s_state == RDR_UPDATE_NEWER && project_dir(dir, sizeof dir);
+}
+
+/* "Update now": tools\update.ps1 in a window of its own, told this
+ * process's id so it waits for the game to close, and the tag (only digits,
+ * dots and a leading v pass). The caller closes the game. */
+int rdr_update_install(void)
+{
+    char dir[MAX_PATH], cmd[2 * MAX_PATH + 256];
+    const char *t;
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    if (s_state != RDR_UPDATE_NEWER || !project_dir(dir, sizeof dir) || !s_tag[0])
+        return 0;
+    for (t = s_tag; *t; t++)
+        if (!((*t >= '0' && *t <= '9') || *t == '.' || (*t == 'v' && t == s_tag)))
+            return 0;
+    snprintf(cmd, sizeof cmd,
+             "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%s\\tools\\update.ps1\" -Tag %s -WaitPid %lu",
+             dir, s_tag, (unsigned long)GetCurrentProcessId());
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, dir, &si, &pi)) {
+        fprintf(stderr, "[UPDATE] could not start the update (error %lu)\n", (unsigned long)GetLastError());
+        fflush(stderr);
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    fprintf(stderr, "[UPDATE] updating to %s: %s\n", s_tag, cmd);
+    fflush(stderr);
+    return 1;
+}
 #else
 void rdr_update_start(void)
 {
@@ -193,6 +256,8 @@ void rdr_update_start(void)
 }
 
 void rdr_update_open_page(void) {}
+int rdr_update_can_install(void) { return 0; }
+int rdr_update_install(void) { return 0; }
 #endif
 
 int rdr_update_state(const char **tag, const char **url)

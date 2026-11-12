@@ -1,0 +1,6 @@
+# Files earlier releases had that later ones dropped: tools\update.ps1
+# deletes them from the project when it updates (paths from the project
+# folder; one a line).
+play.bat
+make_preview.bat
+play_preview.bat

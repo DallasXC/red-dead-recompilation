@@ -22,6 +22,12 @@ void rdr_update_start(void);
 int  rdr_update_state(const char **tag, const char **url);
 /* The release's page in the browser. */
 void rdr_update_open_page(void);
+/* A newer release, and the project folder the game was built in (so it can
+ * be updated in place): "Update now" can be offered. */
+int  rdr_update_can_install(void);
+/* Start the update (tools/update.ps1, its own window); 1 when started: the
+ * caller then closes the game. */
+int  rdr_update_install(void);
 
 #ifdef __cplusplus
 }
