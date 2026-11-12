@@ -65,8 +65,9 @@ Jesse Lynch, Katie O'Grady, Colonel Darren, Atlas and more) and 56 of the
 is there for mods.
 
 ### 🗂️ The lost 2002 preview, playable
-The January 2002 PS2 preview ("Red Dead Revolved") had characters and
-levels that never shipped. Point the launcher at your own copy of it and
+The January 2002 PS2 preview ("Red Dead Revolved", the
+[15 January 2002 build preserved by Hidden Palace](https://hiddenpalace.org/Red_Dead_Revolver_%28Jan_15,_2002_prototype%29)) had characters
+and levels that never shipped. Point the launcher at your own copy of it and
 **56 of its characters** (an early Red, a long-coat Red, Pig Josh, Bat Boy
 who flies...) and **31 of its stages** (an unreleased mine, deathmatch
 arenas) join Showdown and Play As. The stages are ported as they are on
@@ -217,8 +218,10 @@ files, so there is nothing else to get.
 
 ### Tutorial: the 2002 preview characters
 
-You need a disc image (`.iso`) of the January 2002 PS2 preview (your own
-copy; it is not included) and about 2 GB free. This setup brings the
+You need a disc image (`.iso`) of the January 2002 PS2 preview, the
+15 January 2002 build (see
+[Hidden Palace's page about it](https://hiddenpalace.org/Red_Dead_Revolver_%28Jan_15,_2002_prototype%29)).
+It is not included: use your own copy. You also need about 2 GB free. This setup brings the
 story's people too, so the tutorial above is not needed as well.
 
 1. In the launcher, go to **Extras** and choose **Set up the preview
