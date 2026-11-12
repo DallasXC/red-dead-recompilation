@@ -1,12 +1,12 @@
 # Changelog
 
-1.1.0 is the first public release. The port is built from source on each
+1.1.0 was the first public release. The port is built from source on each
 player's PC, from their own copy of the game. This is what it can do,
 grouped by area, newest work first within each. The full story, fix by fix, is the development log,
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
-## Since 1.1.0
+## 1.1.1 (November 2026)
 
 - **Keyboard and mouse are on by default** for a new settings file, and
   with them on for player 1 the prompts show key caps even when Windows
