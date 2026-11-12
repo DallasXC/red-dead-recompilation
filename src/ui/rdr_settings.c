@@ -44,7 +44,7 @@ void rdr_settings_defaults(RdrSettings *s)
     s->deadzone = 0;
     s->invert_cam_x = 0;
     s->invert_cam_y = 0;
-    s->mouse_aim = 0;
+    s->mouse_aim = 1;               /* keyboard and mouse on: a controller works beside them */
     s->mouse_sens = 100;
     s->mouse_duel_sens = 100;
     s->mouse_invert_y = 0;

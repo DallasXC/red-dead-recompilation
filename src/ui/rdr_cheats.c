@@ -536,6 +536,12 @@ int rdr_buttons_style(void)
     int k;
     if (g_rdr_settings.buttons == 1 || g_rdr_settings.buttons == 2)
         return g_rdr_settings.buttons;
+    /* Player 1 on keyboard and mouse: key caps, even with a controller
+     * plugged in (user: keyboard and mouse chosen, a pad connected but not
+     * used, and the Xbox's pictures shown). Buttons > Xbox or PlayStation
+     * in Controls still picks a controller's. */
+    if (g_rdr_settings.mouse_aim && g_rdr_settings.kbm_player == 1)
+        return 3;
     for (k = 0; k < 4; k++) {
         const char *n = xbox_InputPortName((DWORD)k);
         char l[96];

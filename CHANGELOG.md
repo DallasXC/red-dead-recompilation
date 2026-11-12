@@ -8,6 +8,10 @@ items).
 
 ## Since 1.1.0
 
+- **Keyboard and mouse are on by default** for a new settings file, and
+  with them on for player 1 the prompts show key caps even when Windows
+  reports a controller (user: a first build had no mouse and Xbox's button
+  pictures, with no controller plugged in; Windows listed a virtual one).
 - Only `build.bat` and `play_debug.bat` are left at the top of the
   project: `play.bat`, `make_preview.bat` and `play_preview.bat` are gone
   (the play folder's exe starts the game, and the launcher's Extras page

@@ -77,13 +77,19 @@ Black** (zoom with a rifle; with other guns, the special move) and
 **RB / R1 is White** (next weapon). **Mouse and keyboard** can be switched on in the launcher's
 Controls page: see below.
 
+**Keyboard and mouse are on by default.** A controller works beside them;
+if you play only with a controller, choose "A controller" on the launcher's
+first page (or switch **Mouse and keyboard** off in Controls) to get the
+controller's button pictures.
+
 **Button pictures** (Controls): with a PlayStation controller the game's
 prompts show the PS2 version's cross, circle, square and triangle (still
 on the disc) instead of Xbox's A, B, X and Y: "As the controller" picks by
 the first controller plugged in, or choose Xbox or PlayStation. The game's
 own menus change from the next menu or level that loads; PC Options at once.
-Playing on keys and mouse with no controller, the prompts show key caps
-instead: in PC Options and in the game's own menus and prompts: **Enter**
+With **Mouse and keyboard** on for player 1 (Controls; the launcher's
+first page asks "I play with"), the prompts show key caps instead, even if
+Windows reports a controller (some programs add a virtual one): in PC Options and in the game's own menus and prompts: **Enter**
 for A and **Esc** for B (as the menus take them), and the keys you bound to
 X and Y.
 
