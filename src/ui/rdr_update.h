@@ -14,7 +14,7 @@ enum {
     RDR_UPDATE_UNKNOWN          /* no answer (no network, no releases) */
 };
 
-/* This build's version ("1.1.1"). */
+/* This build's version ("1.2.0"). */
 const char *rdr_version(void);
 /* Ask, in the background (once). */
 void rdr_update_start(void);

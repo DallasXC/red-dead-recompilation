@@ -6,7 +6,7 @@ grouped by area, newest work first within each. The full story, fix by fix, is t
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
-## Since 1.1.1
+## 1.2.0 (November 2026)
 
 - **Update now** (launcher > About): with a newer release out, the
   launcher downloads it from GitHub, copies it into the project (settings,
