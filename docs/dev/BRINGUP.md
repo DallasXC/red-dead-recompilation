@@ -2982,7 +2982,8 @@ the rest of the frame thrown away, and no step at all when the
     - Tested here with PowerShell 7 on Linux against a dummy project:
       v1.1.0 downloaded from GitHub, checked, copied over, the settings
       file kept, then the real build.ps1 run (stopping, as it should, at no
-      disc). Not yet run on Windows.
+      disc). On Windows (user, 2026-11-11): a 1.1.0 project updated to
+      1.1.1 with `tools\update.ps1 -Tag v1.1.1`, rebuilt and started.
 
 ## Settings, launcher, overlay (src/ui)
 
