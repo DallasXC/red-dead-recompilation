@@ -576,7 +576,7 @@ them (56 preview, 59 story), 163 in all; the tools stop adding at 400.
 Play As has a list of its own, of up to 240 characters (the game's 54 and
 186 more): a mod character past that is on the line-up only.
 
-## The January 2002 preview ("Red Dead Revolved", PS2)
+## The January 2002 preview (PS2)
 
 The preview disc's `SWAT.ZIP` is not a zip but the retail archive's
 ancestor (a "DAVE" archive with plain-text names); `tools\mods\beta.py`

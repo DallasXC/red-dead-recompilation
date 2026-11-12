@@ -398,7 +398,7 @@ bool PageExtras(RdrSettings *s, bool live)
                             "unfinished disc, and some may not work properly as Showdown stages.");
     } else if (st != 1) {
         Note("Not set up yet. You need a disc image of the January 2002 preview "
-             "(PlayStation 2, \"Red Dead Revolved\"). Setting up takes 5 to 10 minutes "
+             "(PlayStation 2, the 15 January 2002 build). Setting up takes 5 to 10 minutes "
              "and about 2 GB of space.");
     }
     if (live) {

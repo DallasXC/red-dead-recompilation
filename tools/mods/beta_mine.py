@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-beta_mine.py - play the January 2002 preview's mine ("Red Dead Revolved",
-PS2) in the Xbox game.
+beta_mine.py - play the January 2002 preview's mine (PS2) in
+the Xbox game.
 
   python tools\\mods\\beta_mine.py <preview .iso or SWAT.ZIP> <game folder> <mods folder> [where]
 

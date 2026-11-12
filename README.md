@@ -65,7 +65,7 @@ Jesse Lynch, Katie O'Grady, Colonel Darren, Atlas and more) and 56 of the
 is there for mods.
 
 ### 🗂️ The lost 2002 preview, playable
-The January 2002 PS2 preview ("Red Dead Revolved", the
+The January 2002 PS2 preview (the
 [15 January 2002 build preserved by Hidden Palace](https://hiddenpalace.org/Red_Dead_Revolver_%28Jan_15,_2002_prototype%29)) had characters
 and levels that never shipped. Point the launcher at your own copy of it and
 **56 of its characters** (an early Red, a long-coat Red, Pig Josh, Bat Boy

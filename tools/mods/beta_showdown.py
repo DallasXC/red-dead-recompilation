@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-beta_showdown.py - the January 2002 preview ("Red Dead Revolved", PS2) in
+beta_showdown.py - the January 2002 preview (PS2) in
 Showdown, all at once: its characters (beta_roster.py) and the levels of it
 that play as stages (beta_level.py), into one mods folder. EXPERIMENTAL.
 

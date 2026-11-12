@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-beta.py - list and extract the January 2002 preview's archive ("Red Dead
-Revolved", PS2, SCPS_666.66: SWAT.ZIP on the disc -- not a zip).
+beta.py - list and extract the January 2002 preview's archive (PS2,
+SCPS_666.66: SWAT.ZIP on the disc, which is not a zip).
 
 Its format is the retail "Dave" archive's ancestor:
 

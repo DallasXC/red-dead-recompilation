@@ -531,7 +531,7 @@ In split screen the game's own HUD is kept.
 ## The 2002 preview characters
 
 Before Red Dead Revolver came out, a preview of it ran on the PlayStation 2
-("Red Dead Revolved", January 2002). Its characters and stages can be
+(the 15 January 2002 build). Its characters and stages can be
 brought into this game: **56 characters** (preview versions of Red, Annie,
 O'Grady, Chicken, Pig Josh, a long-coat Red, Bat Boy who flies, and many
 more), **31 stages** for Showdown, and the story's own people (Brimstone's

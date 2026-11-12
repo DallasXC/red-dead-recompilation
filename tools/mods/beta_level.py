@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-beta_level.py - play a level of the January 2002 preview ("Red Dead
-Revolved", PS2) in the Xbox game, as a Showdown stage of its own.
+beta_level.py - play a level of the January 2002 preview (PS2) in
+the Xbox game, as a Showdown stage of its own.
 
   python tools\\mods\\beta_level.py list  <preview .iso or SWAT.ZIP>
   python tools\\mods\\beta_level.py add   <preview .iso or SWAT.ZIP> <game folder> <mods folder> <level> [name] ["Title"] ["subtitle"] [image] [--static]

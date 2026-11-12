@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-beta_char.py - a character of the January 2002 preview ("Red Dead
-Revolved", PS2) as a new Showdown character, in its preview look.
+beta_char.py - a character of the January 2002 preview (PS2) as a
+new Showdown character, in its preview look.
 EXPERIMENTAL.
 
   python tools\\mods\\beta_char.py list <preview .iso or SWAT.ZIP>
