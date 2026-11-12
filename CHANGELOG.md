@@ -18,6 +18,8 @@ items).
   sets up the preview's characters and stages).
 - The icon as a 512 x 512 PNG (`assets/icon/icon.png`); the trailer and the
   Discord server on the README.
+- The 2002 preview is named by its build (15 January 2002) and the README
+  links to Hidden Palace's page about it.
 
 ## 1.1.0: first public release (November 2026)
 
