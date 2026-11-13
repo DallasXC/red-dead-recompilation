@@ -6812,20 +6812,68 @@ static int desk_coop_hit(float px, float py, int dbg)
  * 1 and 3 (sub_000196B0/C0/D0), the pause page's own 5 and 4. Found by
  * breaking on the voice allocation as the pause menu's cursor moved. */
 static volatile int s_ui_sound;
+static volatile uint64_t s_ui_sound_ns;
 void rdr_ui_sound(int which)
 {
+    s_ui_sound_ns = xbox_HostNowNs();
     s_ui_sound = which;
+}
+
+/* Is the menus' sound k there to play? sub_0009B400 takes the bank and the
+ * sound from the table at 0x003D1150 and sub_0009ACD0 goes through the
+ * player's bank slot ([player + 0x18 + bank*4], its +4) to the bank's
+ * sounds (+0x4C how many, +0x50 the list). The game only plays these in
+ * its menus; while a level loads the slot can point at a bank already let
+ * go (user crash, 1.1.0: a Move tick played from the fade's thread as the
+ * chapter loaded, the bank at +4 was 0xA84A6400). */
+static int ui_sound_ready(uint32_t sp, int k)
+{
+    uint32_t bank = guest_rd32(0x003D1150u + (uint32_t)k * 8u), slot, b, n, list;
+    if (bank >= 0x100u)
+        return 0;
+    slot = guest_rd32(sp + 0x18u + bank * 4u);
+    if (!slot)
+        return 1;                       /* (the game's own "not loaded": it returns) */
+    if (!in_heap(slot))
+        return 0;
+    b = guest_rd32(slot + 4u);
+    if (!b)
+        return 1;
+    if (!in_heap(b))
+        return 0;
+    n = guest_rd32(b + 0x4Cu);
+    list = guest_rd32(b + 0x50u);
+    return n < 0x10000u && in_heap(list);
 }
 
 static void ui_sound_run(void)
 {
     uint32_t sp = guest_rd32(0x0065B944u), esp0 = g_esp, ecx0 = g_ecx, eax0 = g_eax, edx0 = g_edx;
     int k = s_ui_sound;
+    uint64_t age = xbox_HostNowNs() - s_ui_sound_ns;
     s_ui_sound = 0;
     if (getenv("RDR_UI_DEBUG"))
         fprintf(stderr, "[UI] sound %d (player %08X)\n", k, sp);
     if (sp < 0x10000u || (sp >= 0x04000000u && !in_heap(sp)) || k <= 0 || k > 15)
         return;                         /* (the player is a static: 0x00578960) */
+    /* Only straight away, and never while a screen fade runs (a load): a
+     * tick asked for as a menu closed must not play in the next chapter's
+     * load, on whichever thread reads the pads then. */
+    if (age > 300000000ull || *(volatile uint8_t *)((uintptr_t)xbox_GetMemoryOffset() + RDR_TRANSITION_ON)) {
+        if (getenv("RDR_UI_DEBUG"))
+            fprintf(stderr, "[UI] sound %d dropped (%s)\n", k, age > 300000000ull ? "too late" : "a fade runs");
+        return;
+    }
+    if (!ui_sound_ready(sp, k)) {
+        static int told;
+        if (!told++) {
+            fprintf(stderr, "[UI] menu sound %d skipped: the menus' sounds are not loaded\n", k);
+            fflush(stderr);
+        }
+        return;
+    }
+    if (getenv("RDR_UI_DEBUG"))
+        fprintf(stderr, "[UI] sound %d played\n", k);
     guest_push((uint32_t)k);
     guest_push(0x000196BDu);            /* as from the front end's own */
     g_ecx = sp;

@@ -2985,6 +2985,36 @@ the rest of the frame thrown away, and no step at all when the
       disc). On Windows (user, 2026-11-11): a 1.1.0 project updated to
       1.1.1 with `tools\update.ps1 -Tag v1.1.1`, rebuilt and started.
 
+228. **A crash as a chapter loaded: a menu sound played too late** (user
+    log, 1.1.0 from Quiver: an access violation on the fade's thread just
+    after the stream files opened, [ecx+0x4C] with ecx 0xA84A6400; under
+    it 0x0009B419, our pushed 0x000196BD, 0x00047CB6, 0x00105DDA, the fade
+    thread 0x00106720; esi the sound player 0x00578960). Our menus' sounds
+    (113) are asked for on the overlay's thread and played at the next pad
+    read; a request still waiting as PC Options closed was played on the
+    first read after it, here the fade's thread during the next chapter's
+    load. sub_0009B400 takes the bank and sound from 0x003D1150 and
+    sub_0009ACD0 goes through the player's bank slot ([+0x18 + bank*4],
+    its +4) to the bank's sounds (+0x4C how many, +0x50 the list); in the
+    load the slot's +4 was a bank already let go. Now `ui_sound_run` plays
+    a sound only within 0.3 s of the request, never while a screen fade
+    runs ([0x00663338]), and only when the slot, the bank and its list are
+    in guest memory (a zero slot or bank is left to the game's own "not
+    loaded" exit). Test flag `uisound N`; with RDR_UI_DEBUG each one says
+    played or dropped. Harness (warp to lvl_tomb 1, `uisound 2` every 3 s):
+    played on the main menu and in the level (no false "not loaded"), the
+    one asked for in the fade dropped, no crash.
+229. **The launcher read only the first controller** (user: a PS4 pad and
+    a DualSense together). The launcher opened the first SDL game
+    controller it found and read that one alone. It now keeps up to eight
+    open (by instance id), drops one unplugged, looks for new ones when the
+    count of devices changes and once a second, and puts them together: a
+    button held on any, the stick pushed furthest on any. With no SDL, the
+    four XInput pads are put together the same way (was: the first one).
+    The game itself already opened every pad (the toolkit's
+    open_controllers, rescanned every 2 s). Compiled for Windows (MinGW);
+    not runnable in the harness (the launcher is Windows only).
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

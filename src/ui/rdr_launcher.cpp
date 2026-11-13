@@ -872,7 +872,13 @@ int run_launcher()
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     bool sdl_pads = SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0;
-    SDL_GameController *sdl_pad = NULL;
+    /* Every controller plugged in works the menus (a PS4 pad and a DualSense
+     * together: only the first one found used to); plugged in or out while
+     * the launcher is up, they are picked up or let go. */
+    enum { kPads = 8 };
+    SDL_GameController *sdl_pad[kPads] = {};
+    Uint32 sdl_scan = 0;
+    int sdl_seen = -1;
 #endif
     s_result = -1;
     while (s_result < 0) {
@@ -887,39 +893,84 @@ int run_launcher()
         /* PlayStation, Switch and other pads through SDL (Xbox pads too). */
         if (sdl_pads) {
             SDL_GameControllerUpdate();
-            if (sdl_pad && !SDL_GameControllerGetAttached(sdl_pad)) {
-                SDL_GameControllerClose(sdl_pad);
-                sdl_pad = NULL;
+            for (int k = 0; k < kPads; k++)
+                if (sdl_pad[k] && !SDL_GameControllerGetAttached(sdl_pad[k])) {
+                    SDL_GameControllerClose(sdl_pad[k]);
+                    sdl_pad[k] = NULL;
+                }
+            Uint32 now = SDL_GetTicks();
+            int njoy = SDL_NumJoysticks();
+            if (njoy != sdl_seen || now - sdl_scan > 1000) {
+                sdl_seen = njoy;
+                sdl_scan = now;
+                for (int i = 0; i < njoy; i++) {
+                    if (!SDL_IsGameController(i))
+                        continue;
+                    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+                    bool open = false;
+                    int free_slot = -1;
+                    for (int k = 0; k < kPads; k++) {
+                        if (sdl_pad[k] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl_pad[k])) == id)
+                            open = true;
+                        else if (!sdl_pad[k] && free_slot < 0)
+                            free_slot = k;
+                    }
+                    if (!open && free_slot >= 0)
+                        sdl_pad[free_slot] = SDL_GameControllerOpen(i);
+                }
             }
-            if (!sdl_pad)
-                for (int i = 0; i < SDL_NumJoysticks() && !sdl_pad; i++)
-                    if (SDL_IsGameController(i))
-                        sdl_pad = SDL_GameControllerOpen(i);
-            if (sdl_pad) {
-                SDL_GameController *c = sdl_pad;
+            /* all of them together: a button held on any, the stick pushed
+             * furthest on any */
+            unsigned w = 0;
+            int ba = 0, bb = 0, bx = 0, by = 0, lb = 0, rb = 0;
+            int lx = 0, ly = 0;
+            for (int k = 0; k < kPads; k++) {
+                SDL_GameController *c = sdl_pad[k];
+                if (!c)
+                    continue;
                 auto bt = [c](SDL_GameControllerButton b) { return SDL_GameControllerGetButton(c, b) != 0; };
-                unsigned w = (bt(SDL_CONTROLLER_BUTTON_DPAD_UP) ? 0x01 : 0) | (bt(SDL_CONTROLLER_BUTTON_DPAD_DOWN) ? 0x02 : 0)
-                           | (bt(SDL_CONTROLLER_BUTTON_DPAD_LEFT) ? 0x04 : 0) | (bt(SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ? 0x08 : 0)
-                           | (bt(SDL_CONTROLLER_BUTTON_START) ? 0x10 : 0) | (bt(SDL_CONTROLLER_BUTTON_BACK) ? 0x20 : 0);
-                apply_pad(io, w, bt(SDL_CONTROLLER_BUTTON_A), bt(SDL_CONTROLLER_BUTTON_B),
-                          bt(SDL_CONTROLLER_BUTTON_X), bt(SDL_CONTROLLER_BUTTON_Y),
-                          bt(SDL_CONTROLLER_BUTTON_LEFTSHOULDER), bt(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER),
-                          SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX),
-                          (short)(-1 - SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY)));
+                w |= (bt(SDL_CONTROLLER_BUTTON_DPAD_UP) ? 0x01 : 0) | (bt(SDL_CONTROLLER_BUTTON_DPAD_DOWN) ? 0x02 : 0)
+                   | (bt(SDL_CONTROLLER_BUTTON_DPAD_LEFT) ? 0x04 : 0) | (bt(SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ? 0x08 : 0)
+                   | (bt(SDL_CONTROLLER_BUTTON_START) ? 0x10 : 0) | (bt(SDL_CONTROLLER_BUTTON_BACK) ? 0x20 : 0);
+                ba |= bt(SDL_CONTROLLER_BUTTON_A);
+                bb |= bt(SDL_CONTROLLER_BUTTON_B);
+                bx |= bt(SDL_CONTROLLER_BUTTON_X);
+                by |= bt(SDL_CONTROLLER_BUTTON_Y);
+                lb |= bt(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                rb |= bt(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                int x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
+                int y = -1 - SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
+                if (abs(x) > abs(lx))
+                    lx = x;
+                if (abs(y) > abs(ly))
+                    ly = y;
                 pad = true;
             }
+            if (pad)
+                apply_pad(io, w, ba, bb, bx, by, lb, rb, (short)lx, (short)ly);
         }
 #endif
-        for (DWORD i = 0; i < 4 && !pad; i++) {
-            XINPUT_STATE xs;
-            if (XInputGetState(i, &xs) == ERROR_SUCCESS) {
+        if (!pad) {
+            /* no SDL: the Xbox pads (XInput), all of them together too */
+            unsigned w = 0;
+            int lx = 0, ly = 0;
+            bool any = false;
+            for (DWORD i = 0; i < 4; i++) {
+                XINPUT_STATE xs;
+                if (XInputGetState(i, &xs) != ERROR_SUCCESS)
+                    continue;
                 const XINPUT_GAMEPAD &g = xs.Gamepad;
-                apply_pad(io, g.wButtons, g.wButtons & XINPUT_GAMEPAD_A, g.wButtons & XINPUT_GAMEPAD_B,
-                          g.wButtons & XINPUT_GAMEPAD_X, g.wButtons & XINPUT_GAMEPAD_Y,
-                          g.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER, g.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER,
-                          g.sThumbLX, g.sThumbLY);
-                break;
+                w |= g.wButtons;
+                if (abs(g.sThumbLX) > abs(lx))
+                    lx = g.sThumbLX;
+                if (abs(g.sThumbLY) > abs(ly))
+                    ly = g.sThumbLY;
+                any = true;
             }
+            if (any)
+                apply_pad(io, w, w & XINPUT_GAMEPAD_A, w & XINPUT_GAMEPAD_B, w & XINPUT_GAMEPAD_X,
+                          w & XINPUT_GAMEPAD_Y, w & XINPUT_GAMEPAD_LEFT_SHOULDER,
+                          w & XINPUT_GAMEPAD_RIGHT_SHOULDER, (short)lx, (short)ly);
         }
         if (IsIconic(hwnd)) {
             Sleep(30);
@@ -937,8 +988,9 @@ int run_launcher()
     }
     s_paint = NULL;
 #ifdef RDR_HAVE_SDL2
-    if (sdl_pad)
-        SDL_GameControllerClose(sdl_pad);
+    for (int k = 0; k < kPads; k++)
+        if (sdl_pad[k])
+            SDL_GameControllerClose(sdl_pad[k]);
     if (sdl_pads)
         SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 #endif

@@ -2438,6 +2438,8 @@ void test_flag(void)
         fprintf(stderr, "[TEST] kb2: port %d\n", rdr_kbm2_port() + 1);
     else if (!strncmp(cmd, "players", 7))
         rdr_test_players_report();
+    else if (sscanf(cmd, "uisound %d", &v) == 1)
+        rdr_ui_sound(v);
     else if (sscanf(cmd, "soundbusy %d", &v) == 1)
         g_rdr_test_sound_busy = v;
     else if (sscanf(cmd, "framems %d", &v) == 1)

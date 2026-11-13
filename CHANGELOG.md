@@ -6,6 +6,17 @@ grouped by area, newest work first within each. The full story, fix by fix, is t
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
+## 1.2.1 (November 2026)
+
+- **Crash fix: a menu sound in a chapter's load.** A PC Options sound (the
+  cursor's tick, Accept, Back) still waiting as the menu closed could play
+  during the next chapter's load, after the game had let its menu sounds
+  go, and the game crashed. A menu sound now plays only straight away,
+  never during a load, and only when the menu sounds are there (228).
+- **The launcher reads every controller** plugged in, together (a PS4 pad
+  and a DualSense: only the first one found used to work the menus), and
+  picks up a controller plugged in or out while it is open (229).
+
 ## 1.2.0 (November 2026)
 
 - **Update now** (launcher > About): with a newer release out, the
