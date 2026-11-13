@@ -8,6 +8,13 @@ items).
 
 ## 1.2.1 (November 2026)
 
+- **Sound cutting out and stalling: two causes fixed** in the emulated
+  sound chip. Its thread gave the CPU away about 1,500 times a second and
+  often came back too late, so the speakers ran dry; and every sound effect
+  that finished stopped all sound, the music too, until the game had
+  noticed. In the test harness the silence dropped from 65 s in five and a
+  half minutes to 25 ms. On Windows the sound thread also runs at audio
+  priority now (230).
 - **Crash fix: a menu sound in a chapter's load.** A PC Options sound (the
   cursor's tick, Accept, Back) still waiting as the menu closed could play
   during the next chapter's load, after the game had let its menu sounds

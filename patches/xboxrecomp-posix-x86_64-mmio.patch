@@ -1,5 +1,5 @@
 diff --git a/src/apu/apu_core.c b/src/apu/apu_core.c
-index 7746ae3..62ffb2d 100644
+index 7746ae3..90cb29d 100644
 --- a/src/apu/apu_core.c
 +++ b/src/apu/apu_core.c
 @@ -5,6 +5,10 @@
@@ -7,7 +7,7 @@ index 7746ae3..62ffb2d 100644
   * Copyright (c) 2019-2025 Matt Borgerson
   *
 + * Modified for rdr-recomp (Red Dead Recompilation), 2026, by DallasXC and
-+ * contributors: voice-list and stream repairs, logging of long-lived and stalled voices, audio taps for online play, the worker stack. These changes are under the same licence
++ * contributors: voice-list and stream repairs, logging of long-lived and stalled voices, audio taps for online play, the worker stack, the frame thread's priority, no CPU yield each frame, voices rendered through an idle voice's trap, timing of its loop. These changes are under the same licence
 + * (LGPL-2.1-or-later).
 + *
   * This library is free software; you can redistribute it and/or
@@ -120,6 +120,189 @@ index 7746ae3..62ffb2d 100644
  
      if (xa2_is_active()) {
          if (!d->pace_stalled) {
+@@ -1116,15 +1178,80 @@ static void apu_irq_stats_line(void)
+     if (now < s_irq_next_ns)
+         return;
+     if (s_irq_next_ns)
+-        fprintf(stderr, "[APU-IRQ] traps %u se_frames %u fe-trapped-frames %u underruns %u\n",
++        fprintf(stderr, "[APU-IRQ] traps %u se_frames %u fe-trapped-frames %u (rendered %u) underruns %u\n",
+                 apu_irq_stats.traps, apu_irq_stats.se_frames,
+-                apu_irq_stats.fe_trapped_frames, xa2_underruns());
++                apu_irq_stats.fe_trapped_frames, apu_irq_stats.idle_trap_frames, xa2_underruns());
+     s_irq_next_ns = now + 5000000000ull;
+ }
+ 
++/* Where the frame thread's time goes (RECOMP_AUDIO_HOST): per part of
++ * the loop, the longest single pass and the total over the second, and
++ * how many passes took over 5 ms with which part the biggest. A starve
++ * with no trap is the thread itself late; this says where. */
++enum { FP_THROTTLE, FP_FRAME, FP_IRQ, FP_YIELD, FP_RELOCK, FP_TRAPWAIT, FP_N };
++static const char *const fp_name[FP_N] = { "pacing", "render", "irq", "yield", "lock", "trapwait" };
++static struct { int64_t max_us[FP_N], tot_us[FP_N]; unsigned slow[FP_N]; int64_t next_us; } g_fp;
++
++static void fp_pass(const int64_t part[FP_N])
++{
++    int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME), sum = 0;
++    int big = 0;
++    for (int i = 0; i < FP_N; i++) {
++        sum += part[i];
++        g_fp.tot_us[i] += part[i];
++        if (part[i] > g_fp.max_us[i])
++            g_fp.max_us[i] = part[i];
++        if (part[i] > part[big])
++            big = i;
++    }
++    if (sum - part[FP_THROTTLE] > 5000)
++        g_fp.slow[big]++;
++    if (!g_fp.next_us)
++        g_fp.next_us = now + 1000000;
++    if (now < g_fp.next_us)
++        return;
++    fprintf(stderr, "[AUDIO-PROF]");
++    for (int i = 0; i < FP_N; i++)
++        fprintf(stderr, " %s=%.0f/%.1f/%u", fp_name[i], g_fp.tot_us[i] / 1000.0,
++                g_fp.max_us[i] / 1000.0, g_fp.slow[i]);
++    fprintf(stderr, " (ms total/longest ms/slow passes)\n");
++    memset(&g_fp, 0, sizeof g_fp);
++    g_fp.next_us = now + 1000000;
++}
++
++/* The frame thread renders a period a few milliseconds before the device
++ * needs it, with about 40 ms queued at most. At normal priority it shared
++ * the cores with the title's threads, which spin while they wait, and on a
++ * busy or slow PC it came back too late: the device ran dry, a cut-out.
++ * It sleeps most of the time (pacing), so a high priority costs the title
++ * nothing. On Windows: the multimedia scheduler's "Pro Audio" class (as
++ * audio programs use), else THREAD_PRIORITY_HIGHEST.
++ * RECOMP_APU_PRIORITY=0 leaves it at normal. */
++static void apu_thread_priority(void)
++{
++#ifdef _WIN32
++    const char *e = getenv("RECOMP_APU_PRIORITY");
++    typedef HANDLE (WINAPI *av_fn)(LPCWSTR, LPDWORD);
++    HMODULE avrt;
++    av_fn av;
++    DWORD task = 0;
++    if (e && *e == '0')
++        return;
++    avrt = LoadLibraryA("avrt.dll");
++    av = avrt ? (av_fn)(void *)GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW") : NULL;
++    if (av && av(L"Pro Audio", &task)) {
++        fprintf(stderr, "[APU] frame thread: multimedia class \"Pro Audio\"\n");
++        return;
++    }
++    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
++    fprintf(stderr, "[APU] frame thread: priority highest\n");
++#endif
++}
++
+ static void *mcpx_apu_frame_thread(void *arg)
+ {
+     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
++    apu_thread_priority();
+     qemu_mutex_lock(&d->lock);
+ 
+     while (!qatomic_read(&d->exiting)) {
+@@ -1142,7 +1269,11 @@ static void *mcpx_apu_frame_thread(void *arg)
+         /* Always run the audio output loop — the software mixer and test tone
+          * need continuous frame delivery regardless of APU register state.
+          * The VP/DSP pipeline (se_frame) only runs when registers allow it. */
++        int64_t fp[FP_N] = {0}, fp_t = hs_on() ? qemu_clock_get_us(QEMU_CLOCK_REALTIME) : 0;
++#define FP_MARK(part) do { if (fp_t) { int64_t _n = qemu_clock_get_us(QEMU_CLOCK_REALTIME); \
++            fp[part] += _n - fp_t; fp_t = _n; } } while (0)
+         throttle(d);
++        FP_MARK(FP_THROTTLE);
+         int div0 = d->ep_frame_div;
+ 
+         /* The doorbell ack stands in for the GP DSP, which on hardware runs
+@@ -1167,7 +1298,29 @@ static void *mcpx_apu_frame_thread(void *arg)
+ 
+         hs_trap(fe_trapped);
+ 
+-        if (apu_active && !g_test_tone.active) {
++        /* An idle voice's trap holds the front end's methods until
++         * DirectSound's service routine has unlinked the voice; on the
++         * console that routine runs within microseconds, so the voices
++         * never noticed it. Here it waits for the guest CPU, often tens of
++         * milliseconds (the device queue holds about 40), and every voice
++         * stopped meanwhile: the sound cut out in busy scenes, more the
++         * slower the PC. The voices go on now (the VP reports one idle
++         * voice at a time and skips the rest until the trap is cleared);
++         * only a trap of the title's own, or a halt, stops them.
++         * RECOMP_APU_TRAP_STOPS=1: as before. */
++        static int trap_stops = -1;
++        extern volatile int g_apu_idle_trap;
++        if (trap_stops < 0)
++            trap_stops = apu_env_on("RECOMP_APU_TRAP_STOPS");
++        if ((fectl & NV_PAPU_FECTL_FEMETHMODE) != NV_PAPU_FECTL_FEMETHMODE_TRAPPED)
++            g_apu_idle_trap = 0;
++        bool idle_trap = fe_trapped && g_apu_idle_trap && !trap_stops &&
++                         (fectl & NV_PAPU_FECTL_FEMETHMODE) == NV_PAPU_FECTL_FEMETHMODE_TRAPPED &&
++                         (fectl & NV_PAPU_FECTL_FETRAPREASON) == NV_PAPU_FECTL_FETRAPREASON_REQUESTED;
++        if (idle_trap)
++            apu_irq_stats.idle_trap_frames++;
++
++        if ((apu_active || idle_trap) && !g_test_tone.active) {
+             /* Full pipeline: VP voices → DSP → monitor → waveOut */
+             se_frame(d);
+         } else if (fe_trapped) {
+@@ -1191,6 +1344,7 @@ static void *mcpx_apu_frame_thread(void *arg)
+             d->ep_frame_div++;
+         }
+ 
++        FP_MARK(FP_FRAME);
+         if (div0 % 8 == 0 && d->ep_frame_div != div0)
+             mcpx_apu_pace_rendered(d);
+ 
+@@ -1224,8 +1378,10 @@ static void *mcpx_apu_frame_thread(void *arg)
+             update_irq(d);
+             d->set_irq = false;
+         }
++        FP_MARK(FP_FRAME);
+         apu_deliver_irq(d);
+         apu_irq_stats_line();
++        FP_MARK(FP_IRQ);
+ 
+         /* Let the guest in once per frame.
+          *
+@@ -1237,10 +1393,24 @@ static void *mcpx_apu_frame_thread(void *arg)
+          * thread starved there indefinitely: Burnout 3 froze on its vehicle
+          * select, blocked in voice_lock at raised IRQL, which in turn held
+          * off every USB interrupt. */
++        /* No yield of the CPU here: nothing the title runs takes d->lock
++         * any more (method writes and voice_lock go without it), and a
++         * SwitchToThread on every 32-sample frame -- 1,500 a second -- gave
++         * the core away to whichever title thread was spinning: measured
++         * in the harness, 500 to 950 ms of every second, and the device
++         * ran dry (cut-outs) though the lock was free. The unlock lets the
++         * few that do take it (the mixer, shutdown) in; the pacing wait
++         * drops it every period too. RECOMP_APU_YIELD=1: as before. */
++        static int yield_on = -1;
++        if (yield_on < 0)
++            yield_on = apu_env_on("RECOMP_APU_YIELD");
+         qemu_mutex_unlock(&d->lock);
+-        SwitchToThread();
++        if (yield_on)
++            SwitchToThread();
++        FP_MARK(FP_YIELD);
+         qemu_mutex_lock(&d->lock);
+-        if (fe_trapped &&
++        FP_MARK(FP_RELOCK);
++        if (fe_trapped && !idle_trap &&
+             (qatomic_read(&d->regs[NV_PAPU_FECTL]) &
+              NV_PAPU_FECTL_FEMETHMODE_TRAPPED)) {
+             /* Still trapped after the delivery (held off at raised IRQL, or
+@@ -1248,6 +1418,10 @@ static void *mcpx_apu_frame_thread(void *arg)
+              * dropped rather than spinning on it. */
+             qemu_cond_timedwait(&d->cond, &d->lock, 1);
+         }
++        FP_MARK(FP_TRAPWAIT);
++        if (fp_t)
++            fp_pass(fp);
++#undef FP_MARK
+     }
+ 
+     qemu_mutex_unlock(&d->lock);
 diff --git a/src/apu/apu_mmio_hook.c b/src/apu/apu_mmio_hook.c
 index 235140f..49dd169 100644
 --- a/src/apu/apu_mmio_hook.c
@@ -182,8 +365,32 @@ index 235140f..49dd169 100644
  
  #if !defined(_WIN32) && defined(__aarch64__)
  /* POSIX arm64: the same hook over sigaction + ucontext, with the A64 decoder
+diff --git a/src/apu/apu_state.h b/src/apu/apu_state.h
+index 7318675..84db5b1 100644
+--- a/src/apu/apu_state.h
++++ b/src/apu/apu_state.h
+@@ -5,6 +5,10 @@
+  * Copyright (c) 2018-2019 Jannik Vogel
+  * Copyright (c) 2019-2025 Matt Borgerson
+  *
++ * Modified for rdr-recomp (Red Dead Recompilation), 2026, by DallasXC and
++ * contributors: interrupt and frame counters. These changes are under the
++ * same licence (LGPL-2.1-or-later).
++ *
+  * This library is free software; you can redistribute it and/or
+  * modify it under the terms of the GNU Lesser General Public
+  * License as published by the Free Software Foundation; either
+@@ -588,6 +592,7 @@ extern uint64_t g_dbg_muted_voices[4];
+ typedef struct {
+     unsigned traps;             /* front-end traps latched (fe_method) */
+     unsigned se_frames;         /* VP/DSP frames run (se_frame), cumulative */
+-    unsigned fe_trapped_frames; /* frames that found FECTL trapped */
++    unsigned fe_trapped_frames; /* frames that found FECTL trapped, not rendered */
++    unsigned idle_trap_frames;  /* frames rendered during an idle voice's trap */
+ } ApuIrqStats;
+ extern ApuIrqStats apu_irq_stats;
 diff --git a/src/apu/apu_vp.c b/src/apu/apu_vp.c
-index 3ec56ca..02be314 100644
+index 3ec56ca..62d57bf 100644
 --- a/src/apu/apu_vp.c
 +++ b/src/apu/apu_vp.c
 @@ -5,6 +5,10 @@
@@ -191,7 +398,7 @@ index 3ec56ca..02be314 100644
   * Copyright (c) 2019-2025 Matt Borgerson
   *
 + * Modified for rdr-recomp (Red Dead Recompilation), 2026, by DallasXC and
-+ * contributors: decode registers kept while the front end is trapped, VOICE_ON unlinking a voice still listed, logging. These changes are under the same licence
++ * contributors: decode registers kept while the front end is trapped, VOICE_ON unlinking a voice still listed, a flag for an idle voice's trap, logging. These changes are under the same licence
 + * (LGPL-2.1-or-later).
 + *
   * This library is free software; you can redistribute it and/or
@@ -295,13 +502,17 @@ index 3ec56ca..02be314 100644
      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                     NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE, 0);
  
-@@ -189,12 +282,69 @@ static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
+@@ -189,12 +282,73 @@ static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
   * Front-End method dispatch
   * ============================================================ */
  
 +/* Methods the title wrote while the front end was trapped (the decode
 + * registers were left holding the trapped one), for the status line. */
 +static unsigned s_fe_kept;
++/* Set when the front end trapped on an idle voice (SE2FE_IDLE_VOICE), for
++ * the frame thread: that trap holds only the methods, the voices go on
++ * (apu_core.c). */
++volatile int g_apu_idle_trap;
 +
 +/* VOICE_ON links the voice in at the top of a list (or after the
 + * antecedent). One still linked somewhere -- the title turned it on again
@@ -367,7 +578,7 @@ index 3ec56ca..02be314 100644
      unsigned int selected_handle, list;
  
      switch (method) {
-@@ -212,6 +362,9 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
+@@ -212,6 +366,9 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
          bool locked = is_voice_locked(d, (uint16_t)selected_handle);
          if (!locked) voice_lock(d, (uint16_t)selected_handle, true);
  
@@ -377,7 +588,7 @@ index 3ec56ca..02be314 100644
          list = GET_MASK(d->regs[NV_PAPU_FEAV], NV_PAPU_FEAV_LST);
          if (list != NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_INHERIT) {
              unsigned int top_reg = voice_list_regs[list - 1].top;
-@@ -240,6 +393,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
+@@ -240,6 +397,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
  
          voice_set_mask(d, (uint16_t)selected_handle, NV_PAVS_VOICE_PAR_OFFSET,
                         NV_PAVS_VOICE_PAR_OFFSET_CBO, 0);
@@ -389,7 +600,15 @@ index 3ec56ca..02be314 100644
          d->vp.ssl[selected_handle].ssl_seg = 0;
          d->vp.ssl[selected_handle].ssl_index = 0;
  
-@@ -1145,6 +1303,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
+@@ -507,6 +669,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
+              * it from FECTL (see there). */
+             qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_FETINTSTS);
+             d->set_irq = true;
++            g_apu_idle_trap = 1;
+             apu_irq_stats.traps++;
+         }
+         break;
+@@ -1145,6 +1308,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                             NV_PAVS_VOICE_PAR_OFFSET_CBO, 0);
              d->vp.ssl[v].ssl_seg = 0;
              if (!persist) {
@@ -404,7 +623,7 @@ index 3ec56ca..02be314 100644
                  d->vp.ssl[v].ssl_index = 0;
                  voice_off(d, (uint16_t)v);
              } else {
-@@ -1539,6 +1705,11 @@ static void voice_process(MCPXAPUState *d,
+@@ -1539,6 +1710,11 @@ static void voice_process(MCPXAPUState *d,
          s_vstat[v].bin0 = (uint8_t)bin[0]; s_vstat[v].bin1 = (uint8_t)bin[1];
      }
  
@@ -416,7 +635,7 @@ index 3ec56ca..02be314 100644
      if (voice_should_mute(v)) return;
  
      /* Low-pass filter */
-@@ -1665,10 +1836,202 @@ static void vp_trace_positions(MCPXAPUState *d)
+@@ -1665,10 +1841,202 @@ static void vp_trace_positions(MCPXAPUState *d)
      }
  }
  
@@ -619,7 +838,7 @@ index 3ec56ca..02be314 100644
  
      for (int list = 0; list < 3; list++) {
          hwaddr top, current, next;
-@@ -1680,7 +2043,10 @@ void mcpx_apu_vp_frame(MCPXAPUState *d,
+@@ -1680,7 +2048,10 @@ void mcpx_apu_vp_frame(MCPXAPUState *d,
  
          for (int i = 0; d->regs[current] != 0xFFFF; i++) {
              if (i >= MCPX_HW_MAX_VOICES) {

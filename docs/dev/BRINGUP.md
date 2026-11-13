@@ -3015,6 +3015,47 @@ the rest of the frame thrown away, and no step at all when the
     open_controllers, rescanned every 2 s). Compiled for Windows (MinGW);
     not runnable in the harness (the launcher is Windows only).
 
+230. **The sound cutting out and stalling** (user: "a major issue still";
+    their co-op log: 368,029 methods written while the front end was
+    trapped in nine minutes). Measured in the harness with
+    RECOMP_AUDIO_HOST=1 (what the device actually played against the wall
+    clock) and a new per-part timing of the APU frame thread's loop
+    (`[AUDIO-PROF]`, once a second: pacing wait, render, interrupt, CPU
+    yield, lock, trap wait). Before: 65 s of silence inserted by the
+    device in 333 s of a boot, menus and lvl_tomb, 4,296 dry spells of
+    10-40 ms, nearly all with the front end not trapped; the loop spent
+    500-950 ms of every second in its `SwitchToThread` after each
+    32-sample frame (1,500 yields a second, each handing the core to a
+    title thread that spins in its waits). Two causes, both in the
+    toolkit's APU (apu_core.c):
+    - **No yield each frame.** It was there so title threads waiting on
+      d->lock got in; nothing the title runs takes that lock now (method
+      writes and voice_lock go without it). The unlock and relock stay
+      (the mixer and shutdown take it), the pacing wait drops it every
+      period. RECOMP_APU_YIELD=1 puts the yield back.
+    - **Voices go on through an idle voice's trap.** When a voice goes idle
+      the APU traps the front end (SE2FE_IDLE_VOICE) until DirectSound's
+      service routine has unlinked it. The frame thread rendered nothing
+      meanwhile (as xemu does, where that routine runs within
+      microseconds); here it waits for the guest CPU, 20-45 ms in the
+      harness, with about 40 ms in the device's queue, so every finished
+      sound effect could stop all sound, the music too, and the busier the
+      scene the more often. Now, while the trap is one the APU set for an
+      idle voice (g_apu_idle_trap, set in fe_method; FETRAPREASON
+      REQUESTED), the voices are rendered; the VP still reports one idle
+      voice at a time and skips the others until the trap is cleared. A
+      trap or halt of the title's own still stops them.
+      RECOMP_APU_TRAP_STOPS=1: as before. The APU-IRQ line counts the
+      frames rendered in traps.
+    - On Windows the frame thread asks for the multimedia scheduler's "Pro
+      Audio" class (avrt.dll), else THREAD_PRIORITY_HIGHEST: it sleeps in
+      its pacing nearly all the time. RECOMP_APU_PRIORITY=0: normal.
+    After (same harness, same scenes): 0 ms of silence in 250 s of boot and
+    menus; 25 ms (two dry spells) in 290 s through lvl_tomb with 741 traps,
+    6,876 frames rendered inside them; the loop now waits in its pacing
+    975 ms of each second. No voice on in no list, no list loop, no "Audio
+    didn't halt". MinGW build of the APU compiled.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.
