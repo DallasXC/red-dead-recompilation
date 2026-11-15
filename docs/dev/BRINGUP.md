@@ -3219,6 +3219,12 @@ the rest of the frame thrown away, and no step at all when the
     without the reads (rdr_ls_ticks_base), whatever the start did. Game 1's
     parting at 1650 had the same difference behind it, likely: the third
     pad's later arrival.
+    Then the user's next session: the host's seed was the frame's own
+    (0x0AED71D5, 733333333 >> 2: the fix at work), the guest's still 4
+    reads on (its build was the one before), and the host still plugged in
+    3 pads: the settings' put() leaves a variable already set alone, and
+    the game the lobby starts again inherits the lobby's own
+    RECOMP_USB_PADS (this machine's count). Online it is now set over it.
 
 ## Settings, launcher, overlay (src/ui)
 

@@ -614,8 +614,14 @@ void rdr_settings_apply_env(const RdrSettings *s)
              * with two: the games parted at their first check (user logs:
              * the host with 3, the guest with 2, apart from frame 1). */
             const char *ls = getenv("RDR_LS_SESSION"), *h = getenv("RDR_LS_HOST"), *j = getenv("RDR_LS_JOIN");
-            if (ls && *ls && ((h && *h && *h != '0') || (j && *j)))
-                n = s->coop_players;
+            if (ls && *ls && ((h && *h && *h != '0') || (j && *j))) {
+                /* (Set over what is there: the game the lobby started
+                 * again inherits the lobby's own count, this machine's.) */
+                char c[8];
+                n = s->coop_players < 1 ? 1 : s->coop_players > 4 ? 4 : s->coop_players;
+                snprintf(c, sizeof c, "%d", n);
+                put_always("RECOMP_USB_PADS", c);
+            }
         }
         snprintf(b, sizeof b, "%d,%d,%d,%d", pm[0], pm[1], pm[2], pm[3]);
         put("RECOMP_PAD_MAP", b);
