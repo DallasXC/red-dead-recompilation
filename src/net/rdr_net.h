@@ -78,6 +78,14 @@ void rdr_lobby_view(RdrLobbyView *v);
 int  rdr_online_session(void);          /* 1 in a game started from the lobby */
 void rdr_online_leave_session(void);    /* back to this machine's own game */
 void rdr_online_apply_settings(void *settings);  /* main.c: the host's options over ours */
+/* starting again together when the games parted (rdr_lockstep.c): the
+ * session's save packed ("RDRS", files); every machine started again on
+ * it (files NULL: the host, its own) with a new session number and the
+ * host's "Start in" (start_mode, -1 kept). Restart does not return unless
+ * the files could not be written. */
+int rdr_online_pack_save(uint8_t **out, uint32_t *n);
+uint32_t rdr_online_crc(const uint8_t *p, uint32_t n);
+int rdr_online_restart(const uint8_t *files, uint32_t n, uint32_t session, int start_mode, int resyncs);
 
 /* the host (rdr_net_host.c) */
 void rdr_net_host_tick(void);           /* each game frame: guests in, pads */

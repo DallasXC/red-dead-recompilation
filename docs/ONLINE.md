@@ -154,8 +154,10 @@ that works only if the same pads make the same game, frame for frame.
   game's random numbers 0x00652A70, every player's place and health) and
   where frames come from; tools/lockstep_compare.py shows where two runs
   part.
-- Online: `RDR_LS_HOST=<players>` and `RDR_LS_JOIN=<host>` (UDP 27032,
-  `RDR_LS_DELAY` frames of input delay, 3). Every player's pad is a
+- Online: `RDR_LS_HOST=<players>` and `RDR_LS_JOIN=<host>` (UDP 27032).
+  The input delay starts at 3 frames on every machine and is then each
+  machine's own, set from its ping (below); `RDR_LS_DELAY=<frames>` fixes
+  it instead. Every player's pad is a
   virtual pad on its port from the start (the host 0, guests in order);
   each machine reads its own controller (port 0 of the toolkit: the first
   pad, the keyboard) for frame + delay and sends its last eight to the
@@ -167,6 +169,28 @@ that works only if the same pads make the same game, frame for frame.
   pad, or the keyboard and mouse through the game's own mapping) so
   keyboard play works online too. The kernel's performance counter runs
   at the console's 733 MHz on every machine (its frequency too).
+- **The input delay, set by the ping.** Each machine pings the host (the
+  host each guest) four times a second; a ping answered after a wait on
+  either side (a load) is not counted. The delay a machine needs is the
+  one-way time to the furthest machine, plus twice its spread (a guest's
+  pads also cross from the host to the other guests: half the host's
+  longest ping is added), in frames of the machine's own speed, plus one.
+  The delay only says at which frame a machine puts its own pad, so each
+  machine can change its own without telling the others: going up, the
+  frames between get the same pad; going down, a frame's pad has no frame
+  of its own and its buttons go with the next one. Up at once (4 frames a
+  step at most), down one frame after five steady seconds; 2 to 15
+  frames. "[LS] input delay a -> b frames" in the log.
+- **Starting again together.** When the fingerprints differ ("[LS]
+  DESYNC"), the host (it sees every machine's) packs the save its game
+  plays on (`Saves\Online`) and sends it to the others, who write it over
+  theirs; then every machine starts the game again in lockstep, as the
+  lobby's start does, with a new session number, and the host's "Start in"
+  takes them back to the story's Continue (a new story with nothing saved
+  yet: New again). Five times a session at most (`RDR_LS_AUTORESYNC`, 0
+  never). Tests: `RDR_LS_SIM_DESYNC=<frame>` makes a machine's
+  fingerprint wrong (the first game only), `RDR_LS_SIM_LAG_MS`,
+  `RDR_LS_SIM_JITTER_MS` and `RDR_LS_SIM_LOSS` (percent) a poor network.
 
 ### What the tests found (harness, one machine, same build)
 
@@ -212,6 +236,15 @@ played into a second run, compared frame by frame:
    frames a second, so the "waiting for the other players" line showed
    now and then; on four PCs each runs its own game. Not yet tried on four
    real PCs.
+10. Starting again together, and the ping's delay (host and guest on one
+    machine, every packet 200 ms late plus up to 50, the guest's
+    fingerprint made wrong at frame 240): the delay went 3 -> 7 -> 11 ->
+    15; the host saw the parting at frame 240, sent its save (14.5 KB,
+    15 pieces; a file only the host had arrived), both started again,
+    were in step again and stayed so (no parting, no wait for pads); the
+    delay came down 11 -> 8 as the ping settled. Again with 80 ms, up to
+    30 more and one packet in ten lost, parted at frame 600: the same,
+    the delay at 5-6 frames.
 
 ### Showdown online
 

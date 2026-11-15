@@ -479,6 +479,15 @@ Start waits until everyone matches. Texture packs do not matter.
 While playing online the host's options are used, and cheats, chapters
 and co-op settings can't be changed (every game has to stay the same). A
 line at the top of the picture says when the game waits for someone.
+
+The controls' delay online is set by itself from the ping between the
+PCs: short at home, longer over the internet, so the game does not have
+to stop each frame for a slow connection. If the games fall out of step
+(the PCs no longer show the same game), they start again together by
+themselves: the host's save goes to everyone, every game starts again,
+and the story continues from the start of the chapter you were in.
+Nobody has to leave and join again. After five times in one session it
+stops trying, and the line at the top says to start again.
 **Online Co-op > Leave the online game** goes back to your own game.
 
 How it works: [ONLINE.md](ONLINE.md). (An older, experimental way, where
@@ -657,8 +666,9 @@ was):
   own Jody is fine. Not solved yet.
 - **Online play** is highly experimental: everyone needs the same build,
   the same game files and the same mods on, and games can still freeze or
-  fall out of step. Split screen shared through Parsec is the reliable way to
-  play together for now.
+  fall out of step (they then start again together by themselves, from the
+  start of the chapter). Split screen shared through Parsec is the reliable
+  way to play together for now.
 - **Separate windows** (co-op): each player's view is drawn at a quarter of
   the internal resolution; raise Graphics > Render scale to keep it sharp.
 - **Chapter 8 (Rogue Valley)**: after Go to Chapter, Red was once seen not

@@ -3056,6 +3056,48 @@ the rest of the frame thrown away, and no step at all when the
     975 ms of each second. No voice on in no list, no list loop, no "Audio
     didn't halt". MinGW build of the APU compiled.
 
+231. **Online: starting again together when the games part** (user: much
+    parting on slower PCs, "a constant need to disconnect and reconnect").
+    A machine whose game has parted cannot be put back by itself (every
+    machine runs the whole game from its boot), so all start again: the
+    host, which compares every machine's fingerprint, packs the save its
+    game plays on (RECOMP_SAVE_DIR, Saves/Online: UDATA, TDATA; lobby's
+    pack format, "RDRS") and sends it in 1,000-byte pieces (LSN_RS, then
+    the guest's LSN_RS_NEED for what it lacks, LSN_RS_CHUNK, LSN_RS_READY
+    when the CRC agrees, LSN_RS_GO); the guests write it over theirs; every
+    machine then starts again as the lobby's start does (rdr_lobby.c
+    rdr_online_restart: a new RDR_LS_SESSION, RDR_LS_RESYNC counted, the
+    host's RDR_ONLINE_START: Continue, or New again when the story was new
+    and nothing was saved since the boot, by a CRC of the save then). The
+    waits for pads break off for it. At most five a session
+    (RDR_LS_AUTORESYNC). The lobby's file writing (unpack_files) and
+    packing (pack_save_files) are shared. Harness, host and guest on one
+    machine, the guest's fingerprint made wrong at frame 240
+    (RDR_LS_SIM_DESYNC, first game only) with every packet 200 ms late plus
+    up to 50: parted at 240 on both, the save (14.5 KB, a file only the
+    host had) arrived, both started again and were in step from frame 1
+    on, no parting after. Again with 80 ms, up to 30 more and 10% of
+    packets lost (RDR_LS_SIM_LAG_MS, _JITTER_MS, _LOSS: a thread sends the
+    held packets on time): the same at frame 600.
+232. **Online: the input delay from the ping.** The delay was 3 frames for
+    everyone (50 ms), so on any trip longer than that each frame stopped
+    until the other machine's pad came. Now each machine pings (LSN_PING /
+    LSN_PONG, four a second; not across a poll gap over 150 ms on either
+    side, a load), keeps a smoothed round trip and its spread (TCP's
+    srtt/rttvar), and wants one-way + twice the spread (a guest: plus half
+    of the host's longest to the other guests, in the pong) in frames of
+    its own measured length, plus one; 2 to 15. The delay is only where a
+    machine puts its own pad (frame + delay), so it is each machine's own:
+    going up the frames between get the same pad; going down a frame's pad
+    is left out and its buttons (and the harder analog press) go with the
+    next, a command staying queued. Up at once (4 a step), down by one
+    after five steady seconds. Every machine starts at 3 (the first
+    frames' empty pads are put for every port by every machine).
+    RDR_LS_DELAY=n still fixes it. rdr_ls_net_info gives the ping and the
+    delay. Harness: 200 ms each way gave 3 -> 15 and back to 8 as the ping
+    settled; 80 ms with jitter and loss, 5-6 (frames of ~60 ms there); no
+    waits for pads in either game after the start.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

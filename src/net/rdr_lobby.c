@@ -342,6 +342,7 @@ static void put(Buf *b, const void *d, uint32_t n)
     b->n += n;
 }
 static void put32(Buf *b, uint32_t v) { put(b, &v, 4); }
+static int pack_save_files(Buf *b, const char *dir);
 
 static void pack_file(Buf *b, const char *full, const char *rel)
 {
@@ -526,23 +527,8 @@ static void make_blob(void)
     put(&b, "RDOB", 4);
     put32(&b, LB_NOPTS);
     put(&b, o, sizeof o);
-    count_at = b.n;
-    put32(&b, 0);
-    pack_dir(&b, home_save_dir(), "UDATA", 0);
-    pack_dir(&b, home_save_dir(), "TDATA", 0);
-    if (!b.bad) {
-        /* the file count, for the reader */
-        uint32_t n = 0, p = count_at + 4;
-        while (p + 2 <= b.n) {
-            uint16_t pl;
-            uint32_t sz;
-            memcpy(&pl, b.p + p, 2);
-            memcpy(&sz, b.p + p + 2 + pl, 4);
-            p += 2 + pl + 4 + sz;
-            n++;
-        }
-        memcpy(b.p + count_at, &n, 4);
-    }
+    (void)count_at;
+    pack_save_files(&b, home_save_dir());
     free(L.blob);
     L.blob = b.bad ? NULL : b.p;
     L.blob_n = b.bad ? 0 : b.n;
@@ -597,6 +583,80 @@ static void relaunch(void)
 #endif
 }
 
+/* The files of a packed save (a file count at p, then the files: name
+ * length u16, name, size u32, data), written under online. The blob came
+ * over the network: every length in it is checked against what arrived
+ * before it is used. 0 if every file was written. */
+static int unpack_files(const uint8_t *blob, uint32_t blob_n, uint32_t p, const char *online)
+{
+    char path[1200];
+    uint32_t n, i;
+    int bad = 0;
+    if ((uint64_t)p + 4 > blob_n)
+        return -1;
+    memcpy(&n, blob + p, 4);
+    p += 4;
+    for (i = 0; i < n; i++) {
+        uint16_t pl;
+        uint32_t sz;
+        char rel[600];
+        FILE *f;
+        if ((uint64_t)p + 2 > blob_n) { bad = 1; break; }
+        memcpy(&pl, blob + p, 2);
+        if (pl == 0 || pl >= sizeof rel || (uint64_t)p + 2 + pl + 4 > blob_n) { bad = 1; break; }
+        memcpy(rel, blob + p + 2, pl);
+        rel[pl] = 0;
+        memcpy(&sz, blob + p + 2 + pl, 4);
+        if ((uint64_t)p + 2 + pl + 4 + sz > blob_n) { bad = 1; break; }
+        /* only a relative path inside Saves/Online: no "..", no drive
+         * (':'), no leading slash, no NUL inside the name */
+        if (strlen(rel) != pl || strstr(rel, "..") || strchr(rel, ':') ||
+            rel[0] == '/' || rel[0] == '\\') {
+            fprintf(stderr, "[LOBBY] the host's save has a file name not taken: %.60s\n", rel);
+            bad = 1;
+            break;
+        }
+        if ((size_t)snprintf(path, sizeof path, "%s/%s", online, rel) >= sizeof path) {
+            fprintf(stderr, "[LOBBY] the host's save has a name too long here: %.60s\n", rel);
+            bad = 1;
+            break;                      /* (cut short, it would name another file) */
+        }
+        make_dirs_for(path);
+        f = fopen(path, "wb");
+        if (f) {
+            if (fwrite(blob + p + 2 + pl + 4, 1, sz, f) != sz)
+                bad = 1;
+            fclose(f);
+        } else
+            bad = 1;
+        p += 2 + pl + 4 + sz;
+    }
+    return bad ? -1 : 0;
+}
+
+/* The game's own save files under dir (UDATA, TDATA), packed: a file count,
+ * then the files. 0 if packed. */
+static int pack_save_files(Buf *b, const char *dir)
+{
+    uint32_t count_at = b->n, n = 0, p;
+    put32(b, 0);
+    pack_dir(b, dir, "UDATA", 0);
+    pack_dir(b, dir, "TDATA", 0);
+    if (b->bad)
+        return -1;
+    p = count_at + 4;
+    while (p + 2 <= b->n) {
+        uint16_t pl;
+        uint32_t sz;
+        memcpy(&pl, b->p + p, 2);
+        memcpy(&sz, b->p + p + 2 + pl, 4);
+        p += 2 + pl + 4 + sz;
+        n++;
+    }
+    memcpy(b->p + count_at, &n, 4);
+    return 0;
+}
+
 /* Writes the host's files into Saves/Online, sets the lockstep up for the
  * next start, and starts. Does not return, unless the host's save is not
  * whole (then the lobby shows why). */
@@ -635,38 +695,9 @@ static void launch(void)
         strncat(opts, tmp, sizeof opts - strlen(opts) - 1);
     }
     p += nopt * 4;
-    memcpy(&n, L.blob + p, 4);
-    p += 4;
-    for (i = 0; i < n && (uint64_t)p + 2 <= L.blob_n; i++) {
-        uint16_t pl;
-        uint32_t sz;
-        char rel[600];
-        FILE *f;
-        memcpy(&pl, L.blob + p, 2);
-        if (pl == 0 || pl >= sizeof rel || (uint64_t)p + 2 + pl + 4 > L.blob_n) break;
-        memcpy(rel, L.blob + p + 2, pl);
-        rel[pl] = 0;
-        memcpy(&sz, L.blob + p + 2 + pl, 4);
-        if ((uint64_t)p + 2 + pl + 4 + sz > L.blob_n) break;
-        /* only a relative path inside Saves/Online: no "..", no drive
-         * (':'), no leading slash, no NUL inside the name */
-        if (strlen(rel) != pl || strstr(rel, "..") || strchr(rel, ':') ||
-            rel[0] == '/' || rel[0] == '\\') {
-            fprintf(stderr, "[LOBBY] the host's save has a file name not taken: %.60s\n", rel);
-            break;
-        }
-        if ((size_t)snprintf(path, sizeof path, "%s/%s", online, rel) >= sizeof path) {
-            fprintf(stderr, "[LOBBY] the host's save has a name too long here: %.60s\n", rel);
-            break;                      /* (cut short, it would name another file) */
-        }
-        make_dirs_for(path);
-        f = fopen(path, "wb");
-        if (f) {
-            fwrite(L.blob + p + 2 + pl + 4, 1, sz, f);
-            fclose(f);
-        }
-        p += 2 + pl + 4 + sz;
-    }
+    (void)n;
+    (void)i;
+    unpack_files(L.blob, L.blob_n, p, online);
     /* this machine's own settings (display, controls) on a copy, with the
      * host's game options over them at the start */
     if (!home_ini || !*home_ini)
@@ -1450,4 +1481,63 @@ void rdr_online_leave_session(void)
     env_set("RDR_LS_NAME", NULL);
     env_set("RDR_LS_PORT", NULL);
     relaunch();
+}
+
+/* ── starting again together, when the games have parted ───────────────
+ *
+ * (rdr_lockstep.c.) The host packs the save its game is playing on
+ * (Saves/Online: RECOMP_SAVE_DIR in the session) and sends it to the
+ * others; every machine then starts the game again in lockstep, as the
+ * lobby's start does, on that save, with a new session number (packets of
+ * the game before are not taken for this one's). */
+int rdr_online_pack_save(uint8_t **out, uint32_t *n)
+{
+    Buf b = { 0, 0, 0, 0 };
+    const char *dir = getenv("RECOMP_SAVE_DIR");
+    if (!dir || !*dir || !rdr_online_session())
+        return -1;
+    put(&b, "RDRS", 4);
+    if (pack_save_files(&b, dir) != 0) {
+        free(b.p);
+        return -1;
+    }
+    *out = b.p;
+    *n = b.n;
+    return 0;
+}
+
+uint32_t rdr_online_crc(const uint8_t *p, uint32_t n)
+{
+    return crc32_of(p, n);
+}
+
+int rdr_online_restart(const uint8_t *files, uint32_t n, uint32_t session, int start_mode, int resyncs)
+{
+    char val[32], path[1200];
+    const char *dir = getenv("RECOMP_SAVE_DIR");
+    if (!rdr_online_session() || !dir || !*dir)
+        return -1;
+    if (files) {
+        /* the host's save in place of this machine's copy */
+        if (n < 8 || memcmp(files, "RDRS", 4) != 0)
+            return -1;
+        snprintf(path, sizeof path, "%s/UDATA", dir);
+        remove_tree(path, 0);
+        snprintf(path, sizeof path, "%s/TDATA", dir);
+        remove_tree(path, 0);
+        if (unpack_files(files, n, 4, dir) != 0) {
+            fprintf(stderr, "[LOBBY] the host's save could not be written whole\n");
+            return -1;
+        }
+    }
+    snprintf(val, sizeof val, "%08X", (unsigned)session);
+    env_set("RDR_LS_SESSION", val);
+    if (start_mode >= 0) {
+        snprintf(val, sizeof val, "%d", start_mode);
+        env_set("RDR_ONLINE_START", start_mode ? val : NULL);
+    }
+    snprintf(val, sizeof val, "%d", resyncs);
+    env_set("RDR_LS_RESYNC", val);
+    relaunch();
+    return 0;
 }

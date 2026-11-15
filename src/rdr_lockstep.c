@@ -425,7 +425,16 @@ static int in_heap(uint32_t a) { return a >= 0x80000000u && a < 0x84000000u; }
  *
  *   RDR_LS_HOST=<players>   host; waits for players-1 guests
  *   RDR_LS_JOIN=<host[:port]>  guest
- *   RDR_LS_PORT=27032  RDR_LS_DELAY=3 (frames of input delay)
+ *   RDR_LS_PORT=27032
+ *   RDR_LS_DELAY=<frames>   a fixed input delay (unset: 3 at the start,
+ *                           then set by the ping; see ls_delay_tick)
+ *   RDR_LS_AUTORESYNC=<n>   start again together at most n times when the
+ *                           games part (5; 0 never; see ls_resync_*)
+ *   RDR_LS_SIM_LAG_MS=<ms>  (tests) every packet sent this much later,
+ *                           RDR_LS_SIM_JITTER_MS=<ms> up to this much more,
+ *                           RDR_LS_SIM_LOSS=<percent> that many not at all
+ *   RDR_LS_SIM_DESYNC=<frame>  (tests) this machine's fingerprint wrong
+ *                           from that frame, in the first game only
  *
  * Every machine runs the whole game. Each frame a machine reads its own
  * controller (the first pad as the game would have it: the host pad, or
@@ -441,7 +450,10 @@ static int in_heap(uint32_t a) { return a >= 0x80000000u && a < 0x84000000u; }
 #define LSN_RING  1024
 #define LSN_PAD   22              /* XINPUT_GAMEPAD (18), then a command (rdr_cmd: 4) */
 #define LSN_GAMEPAD 18
-enum { LSN_HELLO = 1, LSN_WELCOME = 2, LSN_INPUT = 3, LSN_HASH = 4, LSN_GO = 5 };
+enum { LSN_HELLO = 1, LSN_WELCOME = 2, LSN_INPUT = 3, LSN_HASH = 4, LSN_GO = 5,
+       LSN_PING = 6, LSN_PONG = 7,
+       LSN_RS = 8, LSN_RS_CHUNK = 9, LSN_RS_NEED = 10, LSN_RS_READY = 11, LSN_RS_GO = 12 };
+#define LSN_RS_CHUNK_N 1000
 
 typedef struct { int used; RdrAddr addr; int port; } LsPeer;
 static int s_ns = -1, s_host, s_me, s_players = 1, s_delay = 3, s_go, s_want_slot;
@@ -454,16 +466,105 @@ static uint32_t s_hash_of[LSN_RING], s_hash_f[LSN_RING];     /* ours, and its fr
 static uint32_t s_their_of[LSN_RING], s_their_f[LSN_RING];   /* theirs come first: kept */
 static uint32_t s_pkt_cur[4];
 
+/* how long since the poll before this one: a packet may have waited that
+ * long, unread (a load, a long frame): no ping is measured across one */
+static uint64_t s_last_poll_ms;
+static int s_poll_gap_ms = 1000;
+#define LSN_POLL_GAP_OK 150             /* (ms: a slow machine's frame is under it; a load is not) */
+
+/* (tests) a slow network: each packet held for RDR_LS_SIM_LAG_MS, plus up
+ * to RDR_LS_SIM_JITTER_MS, and sent from lsn_poll when its time comes */
+#define LSN_LAGQ 512
+static struct { uint64_t at; RdrAddr to; int n; uint8_t b[1100]; } s_lagq[LSN_LAGQ];
+static int s_lag_ms = -1, s_jitter_ms, s_loss_pct;
+static uint32_t s_lag_rng = 12345u;
+static void lsn_lag_flush(void);
+/* the held packets go out on time from a thread of their own, as a
+ * network would carry them, whatever the game's thread is doing */
+#if defined(_WIN32)
+#include <windows.h>
+static CRITICAL_SECTION s_lag_lk;
+static void lag_lock(void) { EnterCriticalSection(&s_lag_lk); }
+static void lag_unlock(void) { LeaveCriticalSection(&s_lag_lk); }
+static DWORD WINAPI lag_thread(LPVOID a) { (void)a; for (;;) { lsn_lag_flush(); Sleep(1); } }
+static void lag_start(void) { InitializeCriticalSection(&s_lag_lk); CreateThread(NULL, 0, lag_thread, NULL, 0, NULL); }
+#else
+#include <pthread.h>
+static pthread_mutex_t s_lag_lk = PTHREAD_MUTEX_INITIALIZER;
+static void lag_lock(void) { pthread_mutex_lock(&s_lag_lk); }
+static void lag_unlock(void) { pthread_mutex_unlock(&s_lag_lk); }
+static void *lag_thread(void *a) { (void)a; for (;;) { lsn_lag_flush(); rdr_net_sleep_ms(1); } return NULL; }
+static void lag_start(void) { pthread_t t; pthread_create(&t, NULL, lag_thread, NULL); pthread_detach(t); }
+#endif
+
+static void lsn_raw(const RdrAddr *to, const uint8_t *b, int n)
+{
+    if (s_lag_ms < 0) {
+        const char *e = getenv("RDR_LS_SIM_LAG_MS"), *j = getenv("RDR_LS_SIM_JITTER_MS");
+        const char *l = getenv("RDR_LS_SIM_LOSS");
+        s_lag_ms = e && atoi(e) > 0 ? atoi(e) : 0;
+        s_jitter_ms = j && atoi(j) > 0 ? atoi(j) : 0;
+        s_loss_pct = l && atoi(l) > 0 ? atoi(l) : 0;
+        if (s_lag_ms || s_jitter_ms || s_loss_pct) {
+            fprintf(stderr, "[LS] (test) packets sent %d ms late, up to %d more, %d%% lost\n", s_lag_ms,
+                    s_jitter_ms, s_loss_pct);
+            if (s_lag_ms || s_jitter_ms)
+                lag_start();
+        }
+    }
+    if (s_loss_pct) {
+        s_lag_rng = s_lag_rng * 1103515245u + 12345u;
+        if ((int)((s_lag_rng >> 16) % 100u) < s_loss_pct)
+            return;
+    }
+    if ((s_lag_ms || s_jitter_ms) && n <= (int)sizeof s_lagq[0].b) {
+        int k;
+        lag_lock();
+        for (k = 0; k < LSN_LAGQ; k++)
+            if (!s_lagq[k].n) {
+                s_lag_rng = s_lag_rng * 1103515245u + 12345u;
+                s_lagq[k].at = rdr_net_now_ms() + (uint64_t)s_lag_ms +
+                               (s_jitter_ms ? (s_lag_rng >> 16) % (uint32_t)(s_jitter_ms + 1) : 0);
+                s_lagq[k].to = *to;
+                memcpy(s_lagq[k].b, b, (size_t)n);
+                s_lagq[k].n = n;
+                lag_unlock();
+                return;
+            }
+        lag_unlock();
+    }
+    if (s_ns >= 0)
+        rdr_sock_send(s_ns, to, b, n);
+}
+
+static void lsn_lag_flush(void)
+{
+    uint64_t now;
+    int k;
+    if (s_lag_ms <= 0 && !s_jitter_ms)
+        return;
+    lag_lock();
+    now = rdr_net_now_ms();
+    for (k = 0; k < LSN_LAGQ; k++)
+        if (s_lagq[k].n && s_lagq[k].at <= now) {
+            if (s_ns >= 0)
+                rdr_sock_send(s_ns, &s_lagq[k].to, s_lagq[k].b, s_lagq[k].n);
+            s_lagq[k].n = 0;
+        }
+    lag_unlock();
+}
 
 static void lsn_send(const RdrAddr *to, uint8_t type, const void *body, int n)
 {
-    uint8_t pkt[512];
+    uint8_t pkt[1100];
     uint32_t m = LSN_MAGIC;
+    if (n < 0 || n > (int)sizeof pkt - 5)
+        return;
     memcpy(pkt, &m, 4);
     pkt[4] = type;
     if (n)
         memcpy(pkt + 5, body, (size_t)n);
-    rdr_sock_send(s_ns, to, pkt, 5 + n);
+    lsn_raw(to, pkt, 5 + n);
 }
 
 static void lsn_put(int port, uint32_t frame, const uint8_t *pad)
@@ -477,6 +578,8 @@ static void lsn_put(int port, uint32_t frame, const uint8_t *pad)
  * others, or the games parted. */
 static volatile int s_wait_state;               /* 0, 1 waiting for players, 2 for the host/guests to join */
 static volatile uint32_t s_parted_at = 0xFFFFFFFFu;
+static volatile int s_rs_state;                 /* 0; 1 starting again together; 2 that failed */
+static int s_resyncs, s_resync_max = 5;         /* this session's restarts so far (RDR_LS_RESYNC); the most */
 
 static void rdr_ls_desync_notice(uint32_t f) { s_parted_at = f; }
 
@@ -484,8 +587,12 @@ int rdr_ls_status(char *buf, int n)
 {
     if (rdr_lockstep_mode() != 4)
         return 0;
-    if (s_parted_at != 0xFFFFFFFFu)
+    if (s_rs_state == 1)
+        snprintf(buf, (size_t)n, "Online: the games parted. Starting again together on the host's save...");
+    else if (s_parted_at != 0xFFFFFFFFu)
         snprintf(buf, (size_t)n, "Online: the games parted at frame %u. Restart to play on", (unsigned)s_parted_at);
+    else if (s_wait_state == 2 && s_resyncs)
+        snprintf(buf, (size_t)n, "Online: started again after the games parted; waiting for everyone...");
     else if (s_wait_state == 2)
         snprintf(buf, (size_t)n, s_host ? "Online: waiting for the other players to join..." : "Online: looking for the host...");
     else if (s_wait_state == 1)
@@ -531,6 +638,7 @@ static void ls_detail_dump(uint32_t from, uint32_t to)
 }
 
 static uint32_t s_last_frame_done;
+static int s_rs_want;                           /* host: start again together, at the next chance */
 
 static void lsn_hash_check(uint32_t f, uint32_t ours, uint32_t theirs)
 {
@@ -544,8 +652,327 @@ static void lsn_hash_check(uint32_t f, uint32_t ours, uint32_t theirs)
                 f, ours, theirs);
         ls_detail_dump(f >= 30 ? f - 30 : 0, s_last_frame_done > f ? s_last_frame_done : f);
         rdr_ls_desync_notice(f);
+        /* The host decides (it sees every machine's fingerprint, so it
+         * sees every parting): all start again together on its save. */
+        if (s_host) {
+            if (s_resyncs < s_resync_max) {
+                s_rs_want = 1;
+                fprintf(stderr, "[LS] starting again together (%d of at most %d)\n", s_resyncs + 1, s_resync_max);
+            } else
+                fprintf(stderr, "[LS] started again %d times already: not again (RDR_LS_AUTORESYNC)\n", s_resyncs);
+        }
     } else if (said++ < 5)
         fprintf(stderr, "[LS] DESYNC at frame %u too\n", f);
+}
+
+/* ── the ping, and the input delay it asks for ──────────────────
+ *
+ * Each frame waits until every player's pad for it is in. A machine puts
+ * its pad for frame + delay, so a delay shorter than the trip to the
+ * others stalled every frame; a long one made the controls slow for
+ * nothing. The delay is each machine's own (only the pads cross the
+ * network, each for the frame its player's machine put it at, so the
+ * others need not know it): set from the round trip to the host (and the
+ * host's to the other guests, its pads passing through the host): the
+ * TCP way: a smoothed time and its spread. Up straight away, down one
+ * frame at a time after five steady seconds. */
+typedef struct { double srtt, rttvar; int have; } LsRtt;     /* have: the samples so far */
+static LsRtt s_rtt[4];                          /* host: each guest's; guest: [0] the host's */
+static int s_relay_ms;                          /* guest: the host's longest to the other guests */
+static int s_delay_fixed, s_delay_down;
+static double s_frame_ms = 16.667;              /* the lockstep frame's wall time, smoothed */
+
+static void rtt_sample(LsRtt *r, double ms)
+{
+    if (ms < 0 || ms > 5000)
+        return;
+    if (!r->have) {
+        r->srtt = ms;
+        r->rttvar = ms / 4;
+        r->have = 1;
+    } else {
+        r->have++;
+        double d = ms - r->srtt;
+        r->rttvar += ((d < 0 ? -d : d) - r->rttvar) / 4;
+        r->srtt += d / 8;
+    }
+}
+
+static int rtt_longest_but(int skip)
+{
+    int p, m = 0;
+    for (p = 1; p < 4; p++)
+        if (p != skip && s_peer[p].used && s_rtt[p].have && s_rtt[p].srtt > m)
+            m = (int)s_rtt[p].srtt;
+    return m;
+}
+
+/* the one-way time my pads take to reach the furthest machine, with room
+ * for its spread */
+static double ls_need_ms(void)
+{
+    int p;
+    double m = 0;
+    if (s_host) {
+        for (p = 1; p < s_players; p++)
+            if (s_peer[p].used && s_rtt[p].have >= 4) {
+                double v = s_rtt[p].srtt / 2 + 2 * s_rtt[p].rttvar;
+                if (v > m)
+                    m = v;
+            }
+    } else if (s_rtt[0].have >= 4)
+        m = s_rtt[0].srtt / 2 + 2 * s_rtt[0].rttvar + s_relay_ms / 2.0;
+    return m;
+}
+
+int rdr_ls_net_info(int *ping_ms, int *delay)
+{
+    int p, m = 0;
+    if (rdr_lockstep_mode() != 4)
+        return 0;
+    if (s_host) {
+        for (p = 1; p < 4; p++)
+            if (s_rtt[p].have && s_rtt[p].srtt > m)
+                m = (int)s_rtt[p].srtt;
+    } else if (s_rtt[0].have)
+        m = (int)s_rtt[0].srtt;
+    if (ping_ms)
+        *ping_ms = m;
+    if (delay)
+        *delay = s_delay;
+    return 1;
+}
+
+static void ls_delay_tick(uint32_t frame)
+{
+    double need, fm;
+    int want;
+    if (s_delay_fixed || frame % 30)
+        return;
+    need = ls_need_ms();
+    if (need <= 0)
+        return;                                 /* no ping yet */
+    fm = s_frame_ms < 16.667 ? 16.667 : s_frame_ms > 50 ? 50 : s_frame_ms;
+    /* the trip, and a frame for the other machine being a frame ahead */
+    want = (int)(need / fm + 0.999) + 1;
+    if (want < 2) want = 2;
+    if (want > 15) want = 15;
+    if (want > s_delay) {
+        int to = want > s_delay + 4 ? s_delay + 4 : want;
+        fprintf(stderr, "[LS] input delay %d -> %d frames (pads %.0f ms on the way, frame %.1f ms)\n",
+                s_delay, to, need, s_frame_ms);
+        s_delay = to;
+        s_delay_down = 0;
+    } else if (want < s_delay - 1) {
+        if (++s_delay_down >= 10) {             /* (a check every 30 frames: five seconds) */
+            fprintf(stderr, "[LS] input delay %d -> %d frames (pads %.0f ms on the way, frame %.1f ms)\n",
+                    s_delay, s_delay - 1, need, s_frame_ms);
+            s_delay--;
+            s_delay_down = 0;
+        }
+    } else
+        s_delay_down = 0;
+}
+
+static void lsn_ping_all(void)
+{
+    static uint64_t last;
+    uint64_t now = rdr_net_now_ms();
+    uint32_t t = (uint32_t)now;
+    int p;
+    if (now - last < 250 || s_poll_gap_ms > LSN_POLL_GAP_OK)
+        return;
+    last = now;
+    if (s_host) {
+        for (p = 1; p < s_players; p++)
+            if (s_peer[p].used)
+                lsn_send(&s_peer[p].addr, LSN_PING, &t, 4);
+    } else if (s_me >= 0)
+        lsn_send(&s_host_addr, LSN_PING, &t, 4);
+}
+
+/* ── starting again together, when the games have parted ────────
+ *
+ * Every machine runs the whole game from its boot, so a game that has
+ * parted from the others cannot be put back by itself: it starts again.
+ * The host sends the save its game plays on (Saves/Online) to the others,
+ * which write it over theirs; then every machine starts the game again in
+ * lockstep, as the lobby's start does, with a new session number, and the
+ * host's "Start in" takes them all back into the story (Continue: the
+ * chapter they were in, from its start). No one has to leave and join
+ * again. (rdr_lobby.c: rdr_online_pack_save, rdr_online_restart.) */
+static struct {
+    uint32_t session, size, crc;
+    uint8_t *data, *have;
+    int nchunks, got, go;
+    int ready[4];
+    uint64_t last_need, last_ready, began;
+} R;
+static uint32_t s_boot_save_crc;                /* host: its save as the game started */
+
+static int rs_peer_of(const RdrAddr *from)
+{
+    int i;
+    for (i = 1; i < 4; i++)
+        if (s_peer[i].used && rdr_addr_same(&s_peer[i].addr, from))
+            return i;
+    return -1;
+}
+
+static void ls_cpu_nap(int ms)
+{
+    extern int xbox_GuestCpuRelease(int kind, uint32_t where);
+    extern void xbox_GuestCpuAcquire(void);
+    int rel = xbox_GuestCpuRelease(0, 238);
+    rdr_net_sleep_ms(ms);
+    if (rel)
+        xbox_GuestCpuAcquire();
+}
+
+static void lsn_poll(void);
+
+static void ls_resync_host(void)
+{
+    uint8_t *blob = NULL;
+    uint32_t n = 0, crc, session;
+    int p, mode, all = 0;
+    uint64_t t0, last = 0;
+    const char *e;
+    s_rs_want = 0;
+    if (rdr_online_pack_save(&blob, &n) != 0) {
+        fprintf(stderr, "[LS] the save could not be read: not starting again\n");
+        s_rs_state = 2;
+        return;
+    }
+    crc = rdr_online_crc(blob, n);
+    session = (uint32_t)(rdr_net_now_ms() * 2654435761u) ^ (s_session * 40503u) ^ crc;
+    if (!session || session == s_session)
+        session ^= 0x5A5A5A5Bu;
+    /* "Start in": the chapter by the book's Continue, unless the game
+     * started a new story and nothing has been saved since */
+    e = getenv("RDR_ONLINE_START");
+    mode = e ? atoi(e) : 0;
+    if (mode == 2 && crc != s_boot_save_crc)
+        mode = 1;
+    memset(&R, 0, sizeof R);
+    R.session = session;
+    R.size = n;
+    R.crc = crc;
+    R.data = blob;
+    R.nchunks = (int)((n + LSN_RS_CHUNK_N - 1) / LSN_RS_CHUNK_N);
+    s_rs_state = 1;
+    fprintf(stderr, "[LS] the host's save to the others: %u bytes in %d pieces; session %08X, start %d\n",
+            (unsigned)n, R.nchunks, (unsigned)session, mode);
+    fflush(stderr);
+    t0 = rdr_net_now_ms();
+    while (rdr_net_now_ms() - t0 < 60000) {
+        uint64_t now = rdr_net_now_ms();
+        if (now - last >= 200) {
+            uint8_t b[12];
+            memcpy(b, &session, 4);
+            memcpy(b + 4, &n, 4);
+            memcpy(b + 8, &crc, 4);
+            for (p = 1; p < s_players; p++)
+                if (s_peer[p].used && !R.ready[p])
+                    lsn_send(&s_peer[p].addr, LSN_RS, b, 12);
+            last = now;
+        }
+        lsn_poll();
+        all = 1;
+        for (p = 1; p < s_players; p++)
+            all &= !s_peer[p].used || R.ready[p];
+        if (all)
+            break;
+        ls_cpu_nap(2);
+    }
+    fprintf(stderr, "[LS] %s: everyone starts again\n", all ? "every guest has the save" : "a guest did not answer");
+    for (p = 0; p < 10; p++) {
+        int q;
+        for (q = 1; q < s_players; q++)
+            if (s_peer[q].used)
+                lsn_send(&s_peer[q].addr, LSN_RS_GO, &session, 4);
+        rdr_net_sleep_ms(20);
+    }
+    while (s_lag_ms > 0 || s_jitter_ms) {       /* (tests: the held packets out first) */
+        int k, left = 0;
+        for (k = 0; k < LSN_LAGQ; k++)
+            left |= s_lagq[k].n;
+        if (!left)
+            break;
+        rdr_net_sleep_ms(2);
+    }
+    fflush(stderr);
+    rdr_sock_close(s_ns);
+    s_ns = -1;
+    rdr_online_restart(NULL, 0, session, mode, s_resyncs + 1);
+    fprintf(stderr, "[LS] could not start again\n");
+    s_rs_state = 2;
+}
+
+static void ls_resync_guest(void)
+{
+    uint64_t t0 = rdr_net_now_ms();
+    fprintf(stderr, "[LS] the host starts everyone again: %u bytes of save, session %08X\n",
+            (unsigned)R.size, (unsigned)R.session);
+    fflush(stderr);
+    while (rdr_net_now_ms() - t0 < 90000) {
+        uint64_t now = rdr_net_now_ms();
+        lsn_poll();
+        if (R.got < R.nchunks) {
+            if (now - R.last_need >= 50) {
+                uint8_t b[4 + 1 + 64 * 2];
+                int k, c = 0;
+                memcpy(b, &R.session, 4);
+                for (k = 0; k < R.nchunks && c < 64; k++)
+                    if (!R.have[k]) {
+                        uint16_t i16 = (uint16_t)k;
+                        memcpy(b + 5 + c * 2, &i16, 2);
+                        c++;
+                    }
+                b[4] = (uint8_t)c;
+                lsn_send(&s_host_addr, LSN_RS_NEED, b, 5 + c * 2);
+                R.last_need = now;
+            }
+        } else if (rdr_online_crc(R.data, R.size) != R.crc) {
+            fprintf(stderr, "[LS] the host's save arrived wrong: again\n");
+            memset(R.have, 0, (size_t)R.nchunks);
+            R.got = 0;
+        } else {
+            if (now - R.last_ready >= 100) {
+                lsn_send(&s_host_addr, LSN_RS_READY, &R.session, 4);
+                R.last_ready = now;
+            }
+            if (R.go) {
+                rdr_sock_close(s_ns);
+                s_ns = -1;
+                rdr_online_restart(R.data, R.size, R.session, -1, s_resyncs + 1);
+                fprintf(stderr, "[LS] the host's save could not be written: not starting again\n");
+                s_rs_state = 2;
+                return;
+            }
+        }
+        ls_cpu_nap(2);
+    }
+    fprintf(stderr, "[LS] the host did not finish starting again\n");
+    s_rs_state = 2;
+}
+
+/* at the frame's start and while it waits: 1 if a restart was tried (it
+ * does not come back if it went) */
+static int ls_resync_due(void)
+{
+    if (s_rs_state == 2)
+        return 0;
+    if (s_host && s_rs_want) {
+        ls_resync_host();
+        return 1;
+    }
+    if (!s_host && s_rs_state == 1 && R.data && !R.began) {
+        R.began = 1;
+        ls_resync_guest();
+        return 1;
+    }
+    return 0;
 }
 
 /* INPUT body: port u8, count u8, first frame u32, count x 18 bytes */
@@ -610,7 +1037,7 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
                 if (s_host)             /* passed on to the other guests */
                     for (i = 1; i < 4; i++)
                         if (s_peer[i].used && s_peer[i].port != port)
-                            rdr_sock_send(s_ns, &s_peer[i].addr, b, n);
+                            lsn_raw(&s_peer[i].addr, b, n);
             }
         }
         break;
@@ -630,7 +1057,130 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
             if (s_host)
                 for (i = 1; i < 4; i++)
                     if (s_peer[i].used && !rdr_addr_same(&s_peer[i].addr, from))
-                        rdr_sock_send(s_ns, &s_peer[i].addr, b, n);
+                        lsn_raw(&s_peer[i].addr, b, n);
+        }
+        break;
+    case LSN_PING:
+        if (n >= 9) {
+            /* back at once, with (the host's) the longest trip to the
+             * other guests: a guest's pads go on from the host */
+            uint8_t r[7];
+            uint16_t relay = 0;
+            if (s_host) {
+                int k = rs_peer_of(from);
+                int m = rtt_longest_but(k);
+                relay = (uint16_t)(m > 65535 ? 65535 : m);
+            }
+            memcpy(r, b + 5, 4);
+            memcpy(r + 4, &relay, 2);
+            r[6] = (uint8_t)(s_poll_gap_ms > LSN_POLL_GAP_OK);   /* it may have waited here */
+            lsn_send(from, LSN_PONG, r, 7);
+        }
+        break;
+    case LSN_PONG:
+        if (n >= 12) {
+            uint32_t t;
+            uint16_t relay;
+            int k = s_host ? rs_peer_of(from) : 0;
+            memcpy(&t, b + 5, 4);
+            memcpy(&relay, b + 9, 2);
+            if (k >= 0 && k < 4) {
+                /* not across a wait on either side (a load: the trip
+                 * would be the load's length) */
+                if (!b[11] && s_poll_gap_ms <= LSN_POLL_GAP_OK)
+                    rtt_sample(&s_rtt[k], (double)(uint32_t)((uint32_t)rdr_net_now_ms() - t));
+                if (!s_host)
+                    s_relay_ms = relay;
+            }
+        }
+        break;
+    case LSN_RS:
+        /* guest: the host starts everyone again (only the host's word) */
+        if (!s_host && n >= 17 && rdr_addr_same(from, &s_host_addr) && s_rs_state != 2) {
+            uint32_t sess, size, crc;
+            memcpy(&sess, b + 5, 4);
+            memcpy(&size, b + 9, 4);
+            memcpy(&crc, b + 13, 4);
+            if (R.data && R.session == sess)
+                break;                          /* (said again) */
+            if (size < 8 || size > (8u << 20))
+                break;
+            free(R.data);
+            free(R.have);
+            memset(&R, 0, sizeof R);
+            R.session = sess;
+            R.size = size;
+            R.crc = crc;
+            R.nchunks = (int)((size + LSN_RS_CHUNK_N - 1) / LSN_RS_CHUNK_N);
+            R.data = (uint8_t *)malloc(size);
+            R.have = (uint8_t *)calloc((size_t)R.nchunks, 1);
+            if (!R.data || !R.have) {
+                free(R.data);
+                free(R.have);
+                memset(&R, 0, sizeof R);
+                break;
+            }
+            s_rs_state = 1;
+        }
+        break;
+    case LSN_RS_CHUNK:
+        if (!s_host && n >= 11 && R.data && rdr_addr_same(from, &s_host_addr)) {
+            uint32_t sess;
+            uint16_t idx;
+            uint32_t off, len;
+            memcpy(&sess, b + 5, 4);
+            memcpy(&idx, b + 9, 2);
+            if (sess != R.session || idx >= R.nchunks || R.have[idx])
+                break;
+            off = (uint32_t)idx * LSN_RS_CHUNK_N;
+            len = R.size - off < LSN_RS_CHUNK_N ? R.size - off : LSN_RS_CHUNK_N;
+            if ((uint32_t)(n - 11) != len)
+                break;
+            memcpy(R.data + off, b + 11, len);
+            R.have[idx] = 1;
+            R.got++;
+        }
+        break;
+    case LSN_RS_NEED:
+        if (s_host && n >= 10 && R.data && s_rs_state == 1) {
+            uint32_t sess;
+            int k = rs_peer_of(from), c = b[9], j;
+            memcpy(&sess, b + 5, 4);
+            if (k < 0 || sess != R.session || n < 10 + c * 2)
+                break;
+            for (j = 0; j < c; j++) {
+                uint16_t idx;
+                uint8_t pk[4 + 2 + LSN_RS_CHUNK_N];
+                uint32_t off, len;
+                memcpy(&idx, b + 10 + j * 2, 2);
+                if (idx >= R.nchunks)
+                    continue;
+                off = (uint32_t)idx * LSN_RS_CHUNK_N;
+                len = R.size - off < LSN_RS_CHUNK_N ? R.size - off : LSN_RS_CHUNK_N;
+                memcpy(pk, &R.session, 4);
+                memcpy(pk + 4, &idx, 2);
+                memcpy(pk + 6, R.data + off, len);
+                lsn_send(from, LSN_RS_CHUNK, pk, 6 + (int)len);
+            }
+        }
+        break;
+    case LSN_RS_READY:
+        if (s_host && n >= 9 && s_rs_state == 1) {
+            uint32_t sess;
+            int k = rs_peer_of(from);
+            memcpy(&sess, b + 5, 4);
+            if (k > 0 && sess == R.session && !R.ready[k]) {
+                R.ready[k] = 1;
+                fprintf(stderr, "[LS] player %d has the save\n", k + 1);
+            }
+        }
+        break;
+    case LSN_RS_GO:
+        if (!s_host && n >= 9 && R.data && rdr_addr_same(from, &s_host_addr)) {
+            uint32_t sess;
+            memcpy(&sess, b + 5, 4);
+            if (sess == R.session)
+                R.go = 1;
         }
         break;
     }
@@ -638,9 +1188,14 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
 
 static void lsn_poll(void)
 {
-    uint8_t buf[1024];
+    uint8_t buf[1500];
     RdrAddr from;
     int n;
+    uint64_t now = rdr_net_now_ms();
+    s_poll_gap_ms = s_last_poll_ms ? (int)(now - s_last_poll_ms) : 1000;
+    s_last_poll_ms = now;
+    if (s_ns < 0)
+        return;
     while ((n = rdr_sock_recv(s_ns, &from, buf, sizeof buf)) > 0)
         lsn_handle(buf, n, &from);
 }
@@ -649,8 +1204,14 @@ static void ls_net_start(const char *host, const char *join)
 {
     const char *e;
     int port = (e = getenv("RDR_LS_PORT")) && atoi(e) > 0 ? atoi(e) : 27032;
-    if ((e = getenv("RDR_LS_DELAY")) && atoi(e) >= 1 && atoi(e) <= 30)
+    if ((e = getenv("RDR_LS_DELAY")) && atoi(e) >= 1 && atoi(e) <= 30) {
         s_delay = atoi(e);
+        s_delay_fixed = 1;
+    }
+    if ((e = getenv("RDR_LS_RESYNC")) && atoi(e) > 0)
+        s_resyncs = atoi(e);
+    if ((e = getenv("RDR_LS_AUTORESYNC")) && *e)
+        s_resync_max = atoi(e) < 0 ? 0 : atoi(e);
     if ((e = getenv("RDR_LS_SESSION")) && *e)
         s_session = (uint32_t)strtoul(e, NULL, 16);
     if ((e = getenv("RDR_LS_SLOT")) && atoi(e) >= 1 && atoi(e) <= 3)
@@ -669,8 +1230,19 @@ static void ls_net_start(const char *host, const char *join)
         } else if (!strchr(join, ':'))
             s_host_addr.port = (uint16_t)port;
     }
-    fprintf(stderr, "[LS] online lockstep: %s, input delay %d frames%s\n",
-            s_host ? "host" : "guest", s_delay, s_ns < 0 ? " -- NO SOCKET" : "");
+    if (s_host) {
+        uint8_t *blob = NULL;
+        uint32_t n = 0;
+        if (rdr_online_pack_save(&blob, &n) == 0) {
+            s_boot_save_crc = rdr_online_crc(blob, n);
+            free(blob);
+        }
+    }
+    fprintf(stderr, "[LS] online lockstep: %s, input delay %d frames%s%s\n",
+            s_host ? "host" : "guest", s_delay, s_delay_fixed ? " (fixed)" : " (set by the ping)",
+            s_ns < 0 ? " -- NO SOCKET" : "");
+    if (s_resyncs)
+        fprintf(stderr, "[LS] started again together after the games parted (%d so far)\n", s_resyncs);
 }
 
 static uint32_t ls_net_ports_mask(void)
@@ -731,16 +1303,35 @@ static uint32_t ls_take_cmd(void)
     return c;
 }
 
+/* The last frame this machine has put its own pad at (frame + the delay
+ * it had then), and what a frame left out held (the delay going down: two
+ * frames' pads would land on one; the one left out gives its buttons to
+ * the next, so a quick press is not lost). */
+static uint32_t s_last_put;
+static uint8_t s_carry[LSN_GAMEPAD];
+static int s_carry_on;
+
 /* The start: everyone in (the host says go), then frame by frame. */
 static void ls_net_frame(uint32_t frame, uint32_t hash)
 {
     static uint32_t first = 0xFFFFFFFFu;
+    static uint64_t last_frame_ms;
     uint8_t body[11 + 8 * LSN_PAD];
     uint8_t mine[LSN_PAD];
     uint64_t t0, last_send = 0, last_say;
     int p, k;
     if (s_ns < 0)
         return;
+    {
+        /* (tests) a parting on purpose, in the first game only */
+        static int sim = -2;
+        if (sim == -2) {
+            const char *e = getenv("RDR_LS_SIM_DESYNC");
+            sim = e && *e && !s_resyncs ? atoi(e) : -1;
+        }
+        if (sim >= 0 && frame >= (uint32_t)sim)
+            hash ^= 0x0BADF00Du;
+    }
     if (first == 0xFFFFFFFFu) {
         /* wait for the others (the host for every guest, a guest for its
          * welcome and the go) */
@@ -787,11 +1378,26 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
         s_wait_state = 0;
         first = frame;
         memset(mine, 0, sizeof mine);
-        for (k = 0; k < s_delay; k++)           /* the first frames: nobody pressed anything */
+        /* the first frames: nobody pressed anything (every machine starts
+         * with the same delay, 3 or RDR_LS_DELAY: the lobby sets none) */
+        for (k = 0; k < s_delay; k++)
             for (p = 0; p < s_players; p++)
                 lsn_put(p, frame + (uint32_t)k, mine);
+        s_last_put = frame + (uint32_t)s_delay - 1;
         fprintf(stderr, "[LS] everyone in at frame %u: %d players\n", frame, s_players);
     }
+    {
+        /* the frame's wall time (a slow machine's frames are longer: fewer
+         * of them cover the trip) */
+        uint64_t now = rdr_net_now_ms();
+        if (last_frame_ms && now - last_frame_ms < 1000)
+            s_frame_ms += ((double)(now - last_frame_ms) - s_frame_ms) / 32;
+        last_frame_ms = now;
+    }
+    if (ls_resync_due())
+        return;
+    lsn_ping_all();
+    ls_delay_tick(frame);
     /* mine, for frame + delay */
     {
         /* the first pad as the game would have had it (the toolkit's
@@ -811,10 +1417,45 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
                 rdr_online_start_merge(mine);
         }
         {
-            uint32_t c = ls_take_cmd();
-            memcpy(mine + LSN_GAMEPAD, &c, 4);
+            uint32_t target = frame + (uint32_t)s_delay, f2;
+            if (target <= s_last_put) {
+                /* the delay went down: this frame's pad has no frame of its
+                 * own; its buttons wait for the next (a command waits in
+                 * the queue) */
+                uint16_t w0, w1;
+                if (!s_carry_on) {
+                    memcpy(s_carry, mine, LSN_GAMEPAD);
+                    s_carry_on = 1;
+                } else {
+                    memcpy(&w0, s_carry, 2);
+                    memcpy(&w1, mine, 2);
+                    w0 |= w1;
+                    memcpy(s_carry, mine, LSN_GAMEPAD);
+                    memcpy(s_carry, &w0, 2);
+                }
+            } else {
+                uint32_t c = ls_take_cmd();
+                if (s_carry_on) {
+                    uint16_t w0, w1;
+                    memcpy(&w0, s_carry, 2);
+                    memcpy(&w1, mine, 2);
+                    w1 |= w0;
+                    memcpy(mine, &w1, 2);
+                    for (k = 2; k < 10; k++)    /* (the analog buttons: the harder press) */
+                        if (s_carry[k] > mine[k])
+                            mine[k] = s_carry[k];
+                    s_carry_on = 0;
+                }
+                memset(mine + LSN_GAMEPAD, 0, 4);
+                /* the delay went up: the frames between get this pad too
+                 * (no command: it goes once, on its own frame) */
+                for (f2 = s_last_put + 1; f2 < target; f2++)
+                    lsn_put(s_me, f2, mine);
+                memcpy(mine + LSN_GAMEPAD, &c, 4);
+                lsn_put(s_me, target, mine);
+                s_last_put = target;
+            }
         }
-        lsn_put(s_me, frame + (uint32_t)s_delay, mine);
     }
     s_hash_of[frame % LSN_RING] = hash;
     s_hash_f[frame % LSN_RING] = frame + 1;
@@ -828,7 +1469,7 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
         uint64_t now = rdr_net_now_ms();
         if (now - last_send >= 8 || last_send == 0) {
             /* my last eight (lost ones get there with the next) */
-            uint32_t from = frame + (uint32_t)s_delay >= 7 ? frame + (uint32_t)s_delay - 7 : 0;
+            uint32_t from = s_last_put >= 7 ? s_last_put - 7 : 0;
             int cnt = 0;
             body[0] = (uint8_t)s_me;
             for (k = 0; k < 8; k++) {
@@ -864,6 +1505,12 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
             last_send = now;
         }
         lsn_poll();
+        if ((s_host && s_rs_want) || (!s_host && s_rs_state == 1 && R.data && !R.began)) {
+            s_wait_state = 0;
+            ls_resync_due();
+            return;
+        }
+        lsn_ping_all();
         for (p = 0; p < s_players; p++)
             all &= s_in_frame[frame % LSN_RING][p] == frame + 1;
         if (all)

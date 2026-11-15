@@ -6,6 +6,17 @@ grouped by area, newest work first within each. The full story, fix by fix, is t
 [docs/dev/BRINGUP.md](docs/dev/BRINGUP.md) (the numbers below are its
 items).
 
+## 1.3.0 (November 2026)
+
+- **Online: games that fall out of step start again together** by
+  themselves: the host's save goes to everyone, every game starts again,
+  and the story goes on from the start of the chapter. Nobody has to
+  leave and join again (231).
+- **Online: the controls' delay follows the ping.** It was 3 frames for
+  everyone, so over the internet each frame stopped to wait for the other
+  PC; each PC now measures its ping and sets its own delay (2 to 15
+  frames), and lowers it again when the connection gets better (232).
+
 ## 1.2.1 (November 2026)
 
 - **Sound cutting out and stalling: two causes fixed** in the emulated
