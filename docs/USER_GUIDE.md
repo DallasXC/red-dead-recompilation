@@ -494,7 +494,9 @@ the rest of your controls. Both PCs should be built the same way (the
 same version, and the same compiler that build.bat asked for); the lobby
 says when they are not. If someone stops answering, the line at the top
 names them after 5 seconds; Online Co-op > Leave the online game stops
-waiting.
+waiting. Online, the game's own black bars are kept (the Black bars
+setting waits until you play alone again), and it is best for both PCs to
+have the same Display > 2002 look setting.
 **Online Co-op > Leave the online game** goes back to your own game.
 
 How it works: [ONLINE.md](ONLINE.md). (An older, experimental way, where

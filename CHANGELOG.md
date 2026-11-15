@@ -22,6 +22,9 @@ items).
   on by default) made the games fall out of step. The mouse now goes over
   the network with the controller, and every PC turns that player's
   camera alike (233).
+- **Online: the Black bars setting no longer differs between PCs.** It
+  wrote into the game, which also reads it outside the drawing; online
+  the bars are left as the game has them (235).
 - **Online: the menus' sounds are off** while playing online: they ran
   the game's own sound code on one PC only (233).
 - **Online: stray packets are ignored.** A player's moves are only taken

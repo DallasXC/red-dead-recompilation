@@ -2900,6 +2900,17 @@ static void letterbox_tick(void)
     int cur = guest_rd8(RDR_FILM_BAND), lb = g_rdr_settings.letterbox, want;
     if (cur != written || game_val < 0)
         game_val = cur;                     /* the game's own write */
+    /* Online: the band byte is the game's, and the game reads it outside
+     * the drawing too (sub_000520A0, sub_000524F0, sub_0005DE20: the view's
+     * set-up), so one machine's Black bars setting could make its game
+     * differ from the others'. Left as the game has it there (the HUD's
+     * own bars piece is still left out of the drawing, hud_draw). */
+    if (rdr_lockstep_mode() == 4) {
+        if (written >= 0 && cur == written && cur != game_val)
+            guest_wr8(RDR_FILM_BAND, (uint8_t)game_val);
+        written = -1;
+        return;
+    }
     /* the 2002 look has its own bands while playing (rdr_hud2002.cpp) */
     if (lb == 2 && g_rdr_settings.look2002 && rdr_hud2002_hide_mask())
         lb = 1;

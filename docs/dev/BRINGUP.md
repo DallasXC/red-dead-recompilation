@@ -3143,6 +3143,19 @@ the rest of the frame thrown away, and no step at all when the
     players, without refusing. Harness: as 233, and the runs of 231, 232
     again.
 
+235. **Online: what else one machine's settings change in the game.** Went
+    through every setting the per-frame code reads: the stick's deadzone
+    and inverts, keyboard and mouse go into the pad before it is sent;
+    Guns in Town and its respawn time go by the game's frame time and are
+    the host's; Pause on focus and the cheats are off online. Two write
+    into the game from a setting of this machine's own: Black bars
+    (letterbox_tick writes the film band byte 0x00652B51, which the game
+    also reads in sub_000520A0, sub_000524F0 and sub_0005DE20, the view's
+    set-up: online it is now left as the game has it), and the 2002 look's
+    pause menu (pause2002 adds one text element to pause.swui: one more
+    allocation on that machine; not changed, both PCs should have the same
+    Display look online, said in the user guide).
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.
