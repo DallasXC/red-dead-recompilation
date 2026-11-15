@@ -2252,6 +2252,7 @@ void sub_003BE6F4(void)                     /* XInputGetState(h, &state) */
 /* The CPU tick count (sub_00084880: jmp to rdtsc), edx:eax. Lockstep:
  * a count of frames (rdr_lockstep.c rdr_ls_ticks). */
 int rdr_ls_ticks(uint64_t *t);
+int rdr_ls_ticks_base(uint64_t *t);
 extern void sub_00084880_gen(void);
 int g_rdr_test_frame_us;                /* tests ("framems N"): the clock moves N ms a frame */
 void sub_00084880(void)
@@ -2270,6 +2271,18 @@ void sub_00084880(void)
             return;
         }
         t = base + (uint64_t)(f - f0) * (uint64_t)g_rdr_test_frame_us * 733ull;
+        g_eax = (uint32_t)t;
+        g_edx = (uint32_t)(t >> 32);
+        g_esp += 4;
+        return;
+    }
+    if (g32v(g_esp) == 0x00018166u && rdr_ls_ticks_base(&t)) {
+        /* The start's random seed (sub_000180E0: srand(ticks >> 2)).
+         * Lockstep's tick count moves on with each read within a frame, and
+         * how many reads the start made before this one was the start's
+         * timing (devices being plugged in on a host thread): the seed
+         * differed between machines and the games parted at frame 30.
+         * The frame's count without the reads, the same everywhere. */
         g_eax = (uint32_t)t;
         g_edx = (uint32_t)(t >> 32);
         g_esp += 4;

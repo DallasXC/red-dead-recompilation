@@ -25,6 +25,13 @@ items).
 - **Online: the Black bars setting no longer differs between PCs.** It
   wrote into the game, which also reads it outside the drawing; online
   the bars are left as the game has them (235).
+- **Online: games no longer part right at the start.** Every PC plugged
+  as many controllers into its virtual console as it had set up (three on
+  one, two on the other), and the console started up differently: the
+  start's random numbers differed and the games parted at their first
+  check, again after each start again. Online every PC now plugs in one
+  per player, and the start's random seed no longer depends on how the
+  start-up went (239).
 - **Online co-op: a player far behind is no longer brought along by one
   PC only.** Story co-op brings a player with no controller on their port
   along behind player 1; online, "a controller on that port" was each

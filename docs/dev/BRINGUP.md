@@ -3200,6 +3200,26 @@ the rest of the frame thrown away, and no step at all when the
     it is off (every player is at some machine). Not what parted this log
     (player 2 was under 15 m away); that waits for the guest's log.
 
+239. **Online: parted at frame 30, every time** (the user's session: game 1
+    parted at 1650, games 2 to 5 at frame 30 with the same fingerprints
+    each time, 572FE511 against E7502666). The two machines' rings had the
+    random number apart from frame 1: host 0AED75BD, guest 0AED76B7 (the
+    harness's too). The start seeds it with srand(ticks >> 2)
+    (sub_000180E0, the tick read returning to 0x00018166; sub_00048470 is
+    srand), and lockstep's tick count is the frame's plus 1000 for each
+    read within it (ls_now_ticks): the host's start had read the clock once
+    fewer before the seed. The start's difference: RECOMP_USB_PADS, how
+    many controllers the toolkit plugs into the console, came from this
+    machine's settings (the last port with a controller mapped, the
+    keyboard player, co-op players): the host had 3 (its log: "pad 3
+    arriving on port 1"), the guest 2, and the pads arrive one by one on
+    the OHCI thread, about a second apart, while the game starts up. Now,
+    online, every machine plugs in co-op players' worth (the host's count,
+    the same everywhere), and the seed's read gets the frame's count
+    without the reads (rdr_ls_ticks_base), whatever the start did. Game 1's
+    parting at 1650 had the same difference behind it, likely: the third
+    pad's later arrival.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

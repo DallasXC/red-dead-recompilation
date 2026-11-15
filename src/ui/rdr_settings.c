@@ -605,6 +605,18 @@ void rdr_settings_apply_env(const RdrSettings *s)
             n = s->kbm2_player;
         if (s->coop_players > n)
             n = s->coop_players;
+        {
+            /* Online: as many controllers on every machine's console as
+             * there are players (the host's co-op count, the same
+             * everywhere). This machine's own controllers count for nothing
+             * there (the pads come over the network), and a console with
+             * three controllers plugged in starts up otherwise than one
+             * with two: the games parted at their first check (user logs:
+             * the host with 3, the guest with 2, apart from frame 1). */
+            const char *ls = getenv("RDR_LS_SESSION"), *h = getenv("RDR_LS_HOST"), *j = getenv("RDR_LS_JOIN");
+            if (ls && *ls && ((h && *h && *h != '0') || (j && *j)))
+                n = s->coop_players;
+        }
         snprintf(b, sizeof b, "%d,%d,%d,%d", pm[0], pm[1], pm[2], pm[3]);
         put("RECOMP_PAD_MAP", b);
         puti("RECOMP_KEYBOARD_PORT", s->kbm_player);

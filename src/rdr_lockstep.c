@@ -372,6 +372,16 @@ static uint64_t ls_now_ticks(void)
     return base + ++t_vt_reads * 1000u;
 }
 
+/* the frame's tick count without the reads within it (rdr_hooks.c: the
+ * start's random seed) */
+int rdr_ls_ticks_base(uint64_t *t)
+{
+    if (!rdr_lockstep_mode())
+        return 0;
+    *t = s_vt_frame;
+    return 1;
+}
+
 /* the tick count's read (rdr_hooks.c, sub_00084880): 1 = given */
 int rdr_ls_ticks(uint64_t *t)
 {
