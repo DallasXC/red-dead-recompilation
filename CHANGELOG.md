@@ -25,6 +25,12 @@ items).
 - **Online: the Black bars setting no longer differs between PCs.** It
   wrote into the game, which also reads it outside the drawing; online
   the bars are left as the game has them (235).
+- **Online: the same maths on every PC.** The game's sines and cosines
+  come from Windows' maths library, which picks a faster version on newer
+  processors; the two can differ in the last digit, enough to split games
+  between a new PC and an older one. Every PC now uses the same version.
+  The processor's floating-point settings are also put back if a driver
+  changes them (236).
 - **Online: the menus' sounds are off** while playing online: they ran
   the game's own sound code on one PC only (233).
 - **Online: stray packets are ignored.** A player's moves are only taken

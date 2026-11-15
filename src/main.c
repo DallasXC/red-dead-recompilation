@@ -639,6 +639,22 @@ static const char *player_folder(int argc, char **argv, int *quit)
 
 char **g_rdr_argv;                      /* the online lobby starts the game again with them */
 
+/* The game's x87 sines, cosines and arctangents are lifted to the C
+ * library's (sin, cos, atan2). On 64-bit Windows the library (the UCRT,
+ * under both compilers' builds) picks an FMA3 version of these when the
+ * processor has FMA3 and the other one when it has not, and the two can
+ * differ in the last bit: a PC with an older processor and one with a new
+ * one would part online over enough frames. The same version everywhere. */
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+int __cdecl _set_FMA3_enable(int flag);
+static void same_maths_everywhere(void)
+{
+    _set_FMA3_enable(0);
+}
+#else
+static void same_maths_everywhere(void) { }
+#endif
+
 int main(int argc, char **argv)
 {
     const char *game_dir = getenv("RDR_GAME_DIR");
@@ -648,6 +664,7 @@ int main(int argc, char **argv)
     int i;
 
     g_rdr_argv = argv;
+    same_maths_everywhere();
 
     /* Online play, a guest: no game here, a window onto the host's
      * (src/net/rdr_viewer.c). */

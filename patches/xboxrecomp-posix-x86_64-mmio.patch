@@ -2484,10 +2484,20 @@ index 2651871..0b86f86 100644
      }
  }
 diff --git a/src/kernel/kernel_guest_cpu.c b/src/kernel/kernel_guest_cpu.c
-index 299dd69..c314781 100644
+index 299dd69..0084608 100644
 --- a/src/kernel/kernel_guest_cpu.c
 +++ b/src/kernel/kernel_guest_cpu.c
-@@ -82,6 +82,17 @@ static uint64_t s_quantum_ns;               /* RECOMP_GUEST_QUANTUM */
+@@ -43,6 +43,9 @@
+  *    in it deadlocked.
+  *  - NtYieldExecution and the thread's end hand over at once.
+  *
++ * Each take of the CPU also puts the SSE control word back if a driver
++ * changed it (guest_mxcsr_check).
++ *
+  * RECOMP_GUEST_QUANTUM (ms, default 4) is the quantum; RECOMP_GUEST_CPU_TRACE
+  * (ms) prints each turn held at least that long and where it ended.
+  */
+@@ -82,6 +85,17 @@ static uint64_t s_quantum_ns;               /* RECOMP_GUEST_QUANTUM */
   * when it is head and the CPU is free; granted says a hand-off reserved the
   * free CPU for the head, so a returning caller may not barge. */
  static int s_free = 1;
@@ -2505,7 +2515,7 @@ index 299dd69..c314781 100644
  static int s_granted;
  static unsigned s_next_ticket, s_head, s_waiting;
  static volatile LONG s_owner_tid;
-@@ -108,6 +119,8 @@ static void guest_cpu_config(void)
+@@ -108,6 +122,8 @@ static void guest_cpu_config(void)
  {
      const char *e = getenv("RECOMP_GUEST_LOCK");
      const char *t = getenv("RECOMP_GUEST_CPU_TRACE");
@@ -2514,7 +2524,7 @@ index 299dd69..c314781 100644
      const char *q = getenv("RECOMP_GUEST_QUANTUM");
      long qms = q && *q ? strtol(q, NULL, 0) : 4;
  
-@@ -215,21 +228,33 @@ static void turn_ended(uint64_t end_ns, int kind, uint32_t where)
+@@ -215,21 +231,59 @@ static void turn_ended(uint64_t end_ns, int kind, uint32_t where)
   * at once and the holder waits. A joining or handing-over thread (a
   * preemption) queues behind every waiter and asks only past the quantum,
   * the round robin of equal priorities. */
@@ -2528,6 +2538,32 @@ index 299dd69..c314781 100644
 +        return 1;
 +    return xbox_HostNowNs() - s_soft_since >= s_soft_grace_ns;
 +}
++
++/* The SSE control the lifted code runs under. The title's own MXCSR is
++ * kept apart (g_mxcsr, ldmxcsr/stmxcsr lifted to it) and the lifted SSE
++ * arithmetic runs under the host thread's: round to nearest, no
++ * flush-to-zero, all exceptions masked (0x1F80, a new thread's). A driver
++ * called on a guest thread (the graphics driver at the present, an audio
++ * or input driver) may leave flush-to-zero or denormals-are-zero set, and
++ * then tiny values come out as 0 on that PC alone -- a lockstep game
++ * parts, a replay no longer repeats. Checked each time a guest thread takes
++ * the CPU (a stmxcsr: next to nothing), put back if it changed, said once. */
++#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
++#include <xmmintrin.h>
++static void guest_mxcsr_check(void)
++{
++    static volatile LONG told;
++    unsigned int csr = _mm_getcsr();
++    if ((csr & 0xFFC0u) != 0x1F80u) {
++        _mm_setcsr((csr & 0x3Fu) | 0x1F80u);
++        if (!InterlockedExchange(&told, 1))
++            fprintf(stderr, "[KERNEL] the SSE control word was %08X on a guest thread (a driver): put back to "
++                    "00001F80\n", csr);
++    }
++}
++#else
++static void guest_mxcsr_check(void) { }
++#endif
 +
  static void guest_cpu_acquire(int barge)
  {
@@ -2550,7 +2586,7 @@ index 299dd69..c314781 100644
              SleepConditionVariableCS(&s_cv, &s_lock, GUEST_CPU_POLL_MS);
              /* Ask the holder to hand over at its next loop back edge
               * (RECOMP_BACK_EDGE) or kernel call: a woken thread at once,
-@@ -241,6 +266,7 @@ static void guest_cpu_acquire(int barge)
+@@ -241,6 +295,7 @@ static void guest_cpu_acquire(int barge)
                  preempt_set(1);
          }
          s_free = 0;
@@ -2558,7 +2594,15 @@ index 299dd69..c314781 100644
          s_granted = 0;
          s_head++;
          s_waiting--;
-@@ -275,6 +301,7 @@ static void guest_cpu_handoff(int kind, uint32_t where)
+@@ -248,6 +303,7 @@ static void guest_cpu_acquire(int barge)
+     InterlockedExchange(&s_owner_tid, (LONG)GetCurrentThreadId());
+     LeaveCriticalSection(&s_lock);
+     t_held = 1;
++    guest_mxcsr_check();
+     if (t0) {
+         uint64_t now = xbox_HostNowNs();
+         InterlockedIncrement(&s_waits);
+@@ -275,6 +331,7 @@ static void guest_cpu_handoff(int kind, uint32_t where)
      EnterCriticalSection(&s_lock);
      preempt_set(0);                     /* the waiter's turn comes now */
      s_free = 1;
@@ -2566,7 +2610,7 @@ index 299dd69..c314781 100644
      InterlockedExchange(&s_owner_tid, 0);
      if (s_waiting) {
          s_granted = 1;
-@@ -296,6 +323,8 @@ static void guest_cpu_soft_release(int kind, uint32_t where, int wake)
+@@ -296,6 +353,8 @@ static void guest_cpu_soft_release(int kind, uint32_t where, int wake)
      t_soft_where = where;
      EnterCriticalSection(&s_lock);
      s_free = 1;
@@ -2575,7 +2619,7 @@ index 299dd69..c314781 100644
      InterlockedExchange(&s_owner_tid, 0);
      if (wake && s_waiting)
          WakeAllConditionVariable(&s_cv);
-@@ -354,6 +383,18 @@ int xbox_GuestCpuRelease(int kind, uint32_t where)
+@@ -354,6 +413,18 @@ int xbox_GuestCpuRelease(int kind, uint32_t where)
  {
      if (!t_held)
          return 0;

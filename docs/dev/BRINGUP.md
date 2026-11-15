@@ -3156,6 +3156,29 @@ the rest of the frame thrown away, and no step at all when the
     allocation on that machine; not changed, both PCs should have the same
     Display look online, said in the user guide).
 
+236. **Online: the same maths on every machine** (from a survey of how
+    emulators keep netplay deterministic). The game's code has no SSE
+    estimate instructions (rcpps/rsqrtps, which differ between Intel and
+    AMD) and never sets MXCSR; its x87 sines, cosines and arctangents are
+    lifted to sin, cos and atan2 (119, 92 and 69 call sites; sqrt is exact
+    anyway). The UCRT, under both compilers' builds (llvm-mingw imports
+    sin from ucrtbase too), takes an FMA3 path for these on processors that
+    have FMA3 and another on those that do not, which can differ in the
+    last bit: main() now calls _set_FMA3_enable(0). The lifted SSE code
+    runs under the host thread's MXCSR (the title's own is kept apart,
+    g_mxcsr); a driver called on a guest thread could leave flush-to-zero
+    or denormals-are-zero on: the toolkit's guest CPU now checks it at each
+    take and puts it back to 0x1F80, saying so once. A first look at
+    thread timing: the boot run twice in hashing mode, once with a 1 ms
+    quantum and a busy loop on its core, gave the same fingerprint for the
+    532 frames both reached (the logos and legal screens; a run into play
+    was cut short). The scheduler itself still hands the CPU over by the
+    wall clock (the 4 ms quantum, barging, the host's wake order) and the
+    timer DPCs, vblank and APU interrupts come at host times: making those
+    deterministic (a scheduler that picks the next thread itself, a
+    quantum counted in guest work, devices on the frame clock) is the
+    larger work left.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.
