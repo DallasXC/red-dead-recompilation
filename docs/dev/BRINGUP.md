@@ -3226,6 +3226,20 @@ the rest of the frame thrown away, and no step at all when the
     the game the lobby starts again inherits the lobby's own
     RECOMP_USB_PADS (this machine's count). Online it is now set over it.
 
+240. **Online: the random numbers apart, all else the same.** The user's
+    session after 239 (both machines 2 pads; no parting at frame 30 any
+    more): game 1 parted at 1620, game 2 at 3780. Both rings had the same
+    positions, health and second number right up to it; only 0x00652A70
+    went apart: in frame 1605 one machine stepped it 18 times, the other
+    16 (from 1604's value with the MSVC rand step, 214013 and 2531011).
+    Something draws random numbers on one machine only: code on another
+    thread (sound), or drawing. To see which, entry hooks on the four rand
+    functions (sub_000483F0, sub_00048430, sub_00048480, sub_000484B0)
+    keep, per frame, the first 32 return addresses (a * for a draw off the
+    main loop's thread), printed under each frame of a parting's dump
+    ("rand xN: ..."). Entry hooks change the generated code: the next
+    build regenerates it.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

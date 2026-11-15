@@ -43,6 +43,17 @@ void rdr_heap_check(const char *where);   /* rdr_overrides.c */
 void rdr_flier_camera(void);    /* rdr_overrides.c */
 extern volatile int g_rdr_freecam;
 
+/* ── The game's random numbers, who draws them (lockstep) ────────────
+ * sub_000483F0, sub_00048430, sub_00048480, sub_000484B0 step the
+ * generator at 0x00652A70; rdr_lockstep.c keeps, per frame, where they
+ * were called from, for the logs of a parting. */
+void rdr_ls_rand_seen(uint32_t ret);
+static uint32_t g32v(uint32_t va);
+void sub_000483F0_enter(void) { rdr_ls_rand_seen(g32v(g_esp)); }
+void sub_00048430_enter(void) { rdr_ls_rand_seen(g32v(g_esp)); }
+void sub_00048480_enter(void) { rdr_ls_rand_seen(g32v(g_esp)); }
+void sub_000484B0_enter(void) { rdr_ls_rand_seen(g32v(g_esp)); }
+
 void sub_00180870_enter(void)
 {
     rdr_freecam_apply();

@@ -637,6 +637,33 @@ typedef struct {
 } LsDetail;
 static LsDetail s_detail[LS_DETAIL_N];
 
+/* Who drew the game's random numbers in each frame (the four rand
+ * functions' entries, rdr_hooks.c): the return addresses of the first
+ * LS_RAND_N, a high bit set for a draw on a thread other than the main
+ * loop's. A parting with the same positions and only the number apart
+ * (user logs: in frame 1605 one machine drew 18, the other 16) says which
+ * code drew on one machine only when the two logs' lists are put side by
+ * side. */
+#define LS_RAND_N 32
+static struct { uint32_t f, n; uint32_t ret[LS_RAND_N]; } s_rand[LS_DETAIL_N];
+static LS_TLS int t_main_loop;
+
+void rdr_ls_rand_seen(uint32_t ret)
+{
+    uint32_t f, k;
+    if (!s_mode)
+        return;
+    f = cur_frame();
+    k = f % LS_DETAIL_N;
+    if (s_rand[k].f != f) {
+        s_rand[k].f = f;
+        s_rand[k].n = 0;
+    }
+    if (s_rand[k].n < LS_RAND_N)
+        s_rand[k].ret[s_rand[k].n] = ret | (t_main_loop ? 0 : 0x80000000u);
+    s_rand[k].n++;
+}
+
 static void ls_detail_dump(uint32_t from, uint32_t to)
 {
     uint32_t f;
@@ -654,6 +681,15 @@ static void ls_detail_dump(uint32_t from, uint32_t to)
             n += snprintf(line + n, sizeof line - (size_t)n, " | %.4f %.4f %.4f hp %.3f",
                           d->pos[k][0], d->pos[k][1], d->pos[k][2], d->hp[k]);
         fprintf(stderr, "%s\n", line);
+        if (s_rand[f % LS_DETAIL_N].f == f && s_rand[f % LS_DETAIL_N].n) {
+            const uint32_t *r = s_rand[f % LS_DETAIL_N].ret;
+            uint32_t j, c = s_rand[f % LS_DETAIL_N].n;
+            n = snprintf(line, sizeof line, "[LS]     rand x%u:", (unsigned)c);
+            for (j = 0; j < c && j < LS_RAND_N && n > 0 && n < (int)sizeof line - 12; j++)
+                n += snprintf(line + n, sizeof line - (size_t)n, " %s%06X", (r[j] >> 31) ? "*" : "",
+                              (unsigned)(r[j] & 0x7FFFFFFFu));
+            fprintf(stderr, "%s\n", line);
+        }
     }
     fflush(stderr);
 }
@@ -1653,6 +1689,7 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
 
 void rdr_ls_frame(uint32_t ret)
 {
+    t_main_loop = 1;
     uint32_t f, h = 2166136261u, cnt, k, v;
     static uint32_t last_ret;
     static int was_loading;
