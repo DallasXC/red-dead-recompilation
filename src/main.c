@@ -573,6 +573,23 @@ static const char *player_folder(int argc, char **argv, int *quit)
             char last[1200], prev[1200];
             snprintf(last, sizeof last, "%sLogs\\last_run.log", s_exe_dir);
             snprintf(prev, sizeof prev, "%sLogs\\previous_run.log", s_exe_dir);
+            {
+                /* Online, a game started again after the games parted: the
+                 * log of the game that parted (with where it parted) would
+                 * be gone after two such starts. Kept as online_parted_N.log
+                 * (N: the start again it led to), and the lobby's log, the
+                 * one before an online game's first start, as
+                 * online_lobby.log. */
+                const char *rs = getenv("RDR_LS_RESYNC"), *ls = getenv("RDR_LS_SESSION");
+                char keep[1200];
+                if (ls && *ls && rs && atoi(rs) > 0) {
+                    snprintf(keep, sizeof keep, "%sLogs\\online_parted_%d.log", s_exe_dir, atoi(rs));
+                    CopyFileA(last, keep, FALSE);
+                } else if (ls && *ls) {
+                    snprintf(keep, sizeof keep, "%sLogs\\online_lobby.log", s_exe_dir);
+                    CopyFileA(last, keep, FALSE);
+                }
+            }
             MoveFileExA(last, prev, MOVEFILE_REPLACE_EXISTING);
             log_to(last);
         }

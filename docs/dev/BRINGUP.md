@@ -3179,6 +3179,16 @@ the rest of the frame thrown away, and no step at all when the
     quantum counted in guest work, devices on the frame clock) is the
     larger work left.
 
+237. **Online logs kept across starting again** (user: "an immediate crash"
+    in co-op; the host's last_run.log was the third game of the session,
+    "started again together after the games parted (2 so far)", closed by
+    the player 5 s after its start, no crash in it; the two games that
+    parted were gone, each start again had moved last_run.log over
+    previous_run.log). The window closing and opening again at a start
+    again may itself look like a crash. Now, at a start in an online
+    session, the log being replaced is kept too: online_parted_N.log after
+    the Nth start again, online_lobby.log before the first start.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

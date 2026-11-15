@@ -25,6 +25,10 @@ items).
 - **Online: the Black bars setting no longer differs between PCs.** It
   wrote into the game, which also reads it outside the drawing; online
   the bars are left as the game has them (235).
+- **Online: the log of a game that fell out of step is kept**
+  (Logs\online_parted_1.log, _2 ...), and the lobby's as
+  Logs\online_lobby.log: each start again used to replace the one before,
+  so after two the record of where the games parted was gone (237).
 - **Online: the same maths on every PC.** The game's sines and cosines
   come from Windows' maths library, which picks a faster version on newer
   processors; the two can differ in the last digit, enough to split games

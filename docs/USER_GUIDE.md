@@ -484,8 +484,10 @@ The controls' delay online is set by itself from the ping between the
 PCs: short at home, longer over the internet, so the game does not have
 to stop each frame for a slow connection. If the games fall out of step
 (the PCs no longer show the same game), they start again together by
-themselves: the host's save goes to everyone, every game starts again,
-and the story continues from the start of the chapter you were in.
+themselves: the host's save goes to everyone, every game starts again
+(the window closes and opens again: that is not a crash), and the story
+continues from the start of the chapter you were in. The log of each game
+that fell out of step is kept in Logs as online_parted_1.log, _2 and so on.
 Nobody has to leave and join again. After five times in one session it
 stops trying, and the line at the top says to start again.
 
