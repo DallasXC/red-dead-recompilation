@@ -3189,6 +3189,17 @@ the rest of the frame thrown away, and no step at all when the
     session, the log being replaced is kept too: online_parted_N.log after
     the Nth start again, online_lobby.log before the first start.
 
+238. **Online co-op: "nobody on its port" was each machine's own.** From
+    the user's first parted log (host side: in step at frame 1620, parted
+    by 1650 in story co-op, player 1 walking, player 2 standing 8-9 m
+    away; the guest's log of it not yet in hand): going through the co-op
+    code for what reads this machine's own state, the 15 m bring-along
+    (a player whose port never had a controller, rdr_port_ever: the
+    overlay's pad filter, this machine's controllers and its keyboard
+    player) would move player 2 on one machine and not the other. Online
+    it is off (every player is at some machine). Not what parted this log
+    (player 2 was under 15 m away); that waits for the guest's log.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

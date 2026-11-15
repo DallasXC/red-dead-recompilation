@@ -25,6 +25,10 @@ items).
 - **Online: the Black bars setting no longer differs between PCs.** It
   wrote into the game, which also reads it outside the drawing; online
   the bars are left as the game has them (235).
+- **Online co-op: a player far behind is no longer brought along by one
+  PC only.** Story co-op brings a player with no controller on their port
+  along behind player 1; online, "a controller on that port" was each
+  PC's own answer, so one PC could move player 2 and the other not (238).
 - **Online: the log of a game that fell out of step is kept**
   (Logs\online_parted_1.log, _2 ...), and the lobby's as
   Logs\online_lobby.log: each start again used to replace the one before,

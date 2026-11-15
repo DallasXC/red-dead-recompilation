@@ -6570,7 +6570,10 @@ static void player_update(void)
              * where they were left (user: "Brimstone teleporting the
              * second player back" -- the log had the DualSense switch
              * itself off while player 2 stood waiting). */
-            if (!rdr_port_ever(k) && coop_health(p) > 0.0f && !guest_rd8(RDR_CINEMA)
+            /* (Online every player is on some machine: whether a
+             * controller was ever on this port here is this machine's
+             * own, and the others' answer would differ; never there.) */
+            if (rdr_lockstep_mode() != 4 && !rdr_port_ever(k) && coop_health(p) > 0.0f && !guest_rd8(RDR_CINEMA)
                 && coop_dist2(p, p1) > 15.0f * 15.0f) {
                 idle_t[k] += guest_rdf(0x00406504u);
                 if (idle_t[k] >= 2.0f) {
