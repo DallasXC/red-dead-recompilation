@@ -57,7 +57,7 @@
 #endif
 
 #define LB_MAGIC   0x424C4452u      /* "RDLB" */
-#define LB_VERSION 8                    /* 8: the join code's key */
+#define LB_VERSION 9                    /* 8: the join code's key; 9: the mouse crosses with the pads (1.3.0) */
 #define LB_KEY_BITS 20
 #define LB_CHUNK   1000
 #define LB_MAXBLOB (4u << 20)
@@ -103,6 +103,7 @@ static struct {
     uint8_t *have;              /* chunks received */
     uint32_t want_crc;
     int welcomed, complete, checked, mismatch;
+    int other_build;            /* guest: the host's game was built another way */
     /* the blob: the options and the save */
     uint8_t *blob;
     uint32_t blob_n;
@@ -747,6 +748,29 @@ static void launch(void)
     relaunch();
 }
 
+/* How this game was built: the version and the compiler. Two builds of the
+ * same version by different compilers can still part online: the game's
+ * floating-point code is the same, but the maths library under it (sines,
+ * square roots) is the compiler's, and a last bit apart is enough over a
+ * few thousand frames. Told, not refused. */
+extern const char *rdr_version(void);
+static const char *build_name(void)
+{
+    static char b[32];
+    if (!b[0]) {
+#if defined(__clang__)
+        snprintf(b, sizeof b, "%s clang %d.%d", rdr_version(), __clang_major__, __clang_minor__);
+#elif defined(_MSC_VER)
+        snprintf(b, sizeof b, "%s MSVC %d", rdr_version(), _MSC_VER);
+#elif defined(__GNUC__)
+        snprintf(b, sizeof b, "%s gcc %d.%d", rdr_version(), __GNUC__, __GNUC_MINOR__);
+#else
+        snprintf(b, sizeof b, "%s", rdr_version());
+#endif
+    }
+    return b;
+}
+
 /* ── the wire ─────────────────────────────────────────────────────────── */
 static void send_to(const RdrAddr *to, uint8_t type, const void *body, int n)
 {
@@ -803,7 +827,7 @@ static void host_packet(const uint8_t *b, int n, const RdrAddr *from)
     switch (b[0]) {
     case LB_HELLO: {
         uint16_t ver;
-        uint8_t w[14];
+        uint8_t w[46];
         uint32_t crc, id = 0;
         if (n < 3 + 32) return;
         memcpy(&ver, b + 1, 2);
@@ -868,13 +892,27 @@ static void host_packet(const uint8_t *b, int n, const RdrAddr *from)
             }
         }
         L.peer[slot].last_ms = rdr_net_now_ms();
+        if (n >= 43 + 32) {
+            char gb[33];
+            memcpy(gb, b + 43, 32);
+            gb[32] = 0;
+            if (strcmp(gb, build_name()) && !L.peer[slot].ready) {
+                char t[160];
+                snprintf(t, sizeof t, "%s's game was built another way (%s; this PC %s)", L.peer[slot].name, gb,
+                         build_name());
+                fprintf(stderr, "[LOBBY] %s\n", t);
+                say("%s: online the games may part. Build both PCs the same way.", t);
+            }
+        }
         crc = crc32_of(L.blob, L.blob_n);
         w[0] = (uint8_t)slot;
         w[1] = (uint8_t)L.players;
         memcpy(w + 2, &L.session, 4);
         memcpy(w + 6, &L.blob_n, 4);
         memcpy(w + 10, &crc, 4);
-        send_to(from, LB_WELCOME, w, 14);
+        memset(w + 14, 0, 32);
+        memcpy(w + 14, build_name(), strlen(build_name()));
+        send_to(from, LB_WELCOME, w, 46);
         host_roster();
         break;
     }
@@ -992,6 +1030,17 @@ static void guest_packet(const uint8_t *b, int n, const RdrAddr *from)
                 return;
             }
             L.welcomed = 1;
+            L.other_build = 0;
+            if (n >= 15 + 32) {
+                char hb[33];
+                memcpy(hb, b + 15, 32);
+                hb[32] = 0;
+                if (strcmp(hb, build_name())) {
+                    L.other_build = 1;
+                    fprintf(stderr, "[LOBBY] the host's game was built another way: %s (this PC %s)\n", hb,
+                            build_name());
+                }
+            }
             lk();
             L.state = 3;
             ulk();
@@ -1148,13 +1197,15 @@ static void *lobby_thread(void *arg)
             }
         } else {
             if ((!L.welcomed && now - last_hello >= 500) || (L.welcomed && !hello_after)) {
-                uint8_t h[2 + 32 + 4 + 4];
+                uint8_t h[2 + 32 + 4 + 4 + 32];
                 uint16_t v = LB_VERSION;
                 int k;
                 memcpy(h, &v, 2);
                 memcpy(h + 2, L.myname, 32);
                 memcpy(h + 34, &L.myid, 4);
                 memcpy(h + 38, &L.key, 4);
+                memset(h + 42, 0, 32);
+                memcpy(h + 42, build_name(), strlen(build_name()));
                 if (L.welcomed) {               /* once more, the chosen way only */
                     send_to(&L.host, LB_HELLO, h, (int)sizeof h);
                     hello_after = 1;
@@ -1209,7 +1260,9 @@ static void *lobby_thread(void *arg)
                     } else
                         send_to(&L.host, LB_READY, NULL, 0);
                     if (!L.complete && !why)
-                        say("Ready: waiting for the host to start%s.", NULL);
+                        say("Ready: waiting for the host to start%s.",
+                            L.other_build ? " (the host's game was built another way: the games may part online)"
+                                          : NULL);
                     L.complete = 1;
                 } else {
                     memset(L.have, 0, (L.blob_n + LB_CHUNK - 1) / LB_CHUNK);   /* again */

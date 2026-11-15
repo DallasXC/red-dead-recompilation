@@ -485,6 +485,109 @@ static void mouse_look(uint32_t cont, int slot)
     *ay += L->ay;
 }
 
+/* Online the same, for every player on every machine alike: each
+ * player's camera turns with that player's mouse, its counts and settings
+ * come with the player's pad for the frame (rdr_lockstep.c rdr_ls_mouse).
+ * The mouse had turned only the camera on its own machine -- straight into
+ * the game, the others never saw it: the games parted at the first move of
+ * a mouse in play (keyboard and mouse are on by default). The test of
+ * whether the camera turns with it goes by the game's frames here (30 for
+ * half a second), not the wall clock; what the stick should get instead
+ * goes to this machine's own player's stick only, into its next pads. */
+extern int rdr_ls_mouse(int port, long *dx, long *dy, int *sens, int *duel_sens, int *inv_x, int *inv_y);
+extern int rdr_ls_my_port(void);
+extern int rdr_lockstep_mode(void);
+static int duel_cursor_state(void);
+
+typedef struct {
+    uint32_t frame, dead_frame;
+    int dead, still;
+    float ax, ay, last_b, last_t;
+} LookNet;
+static LookNet s_look_net[4];
+
+static int player_port(uint32_t player)
+{
+    uint32_t pad = guest_rd32(player + 0x894);
+    if (pad < 0x006795C8u || pad >= 0x006795C8u + 4u * 0xB0u || (pad - 0x006795C8u) % 0xB0u)
+        return -1;
+    return (int)((pad - 0x006795C8u) / 0xB0u);
+}
+
+static void mouse_look_net(uint32_t cont, uint32_t player)
+{
+    int port = player_port(player), me = rdr_ls_my_port();
+    uint32_t frame = guest_rd32(RDR_FRAME_COUNT);
+    LookNet *L;
+    volatile float *ax, *ay;
+    if (port < 0)
+        return;
+    L = &s_look_net[port];
+    if (frame != L->frame) {
+        long dx = 0, dy = 0;
+        int sens, dsens, inv_x, inv_y;
+        float dt = *(volatile float *)((uintptr_t)xbox_GetMemoryOffset() + RDR_FRAME_SECONDS), a;
+        L->frame = frame;
+        L->ax = L->ay = 0;
+        if (!rdr_ls_mouse(port, &dx, &dy, &sens, &dsens, &inv_x, &inv_y))
+            return;
+        if (rdr_duel_active()) {
+            /* the duel: its aim (states 3, 4) takes the counts itself
+             * (duel_mouse_aim); its grab and draw read the right stick */
+            L->dead = 1;
+            L->dead_frame = frame;
+            if (port == me && !duel_cursor_state() && (dx || dy))
+                rdr_input_look_share(dx, dy);
+            return;
+        }
+        {
+            volatile float *b = look_channel(cont, 20), *t = look_channel(cont, 21);
+            if (b && t) {
+                float db = *b - L->last_b, dtl = *t - L->last_t;
+                int moved = db * db + dtl * dtl > 1e-10f;
+                int with = (db * L->ax > 0.0f && db > -3.0f && db < 3.0f) || (L->ay && dtl * dtl > 1e-10f);
+                if (L->ax || L->ay)
+                    L->still = with ? 0 : L->still + 1;
+                else if (moved)
+                    L->still = 0;
+                if (with && L->dead && frame - L->dead_frame >= 30)
+                    L->dead = 0;
+                L->last_b = *b;
+                L->last_t = *t;
+            }
+            if (L->still >= 4) {
+                L->still = 0;
+                L->dead = 1;
+                L->dead_frame = frame;
+            }
+            if (L->dead && frame - L->dead_frame < 30) {
+                if (port == me && (dx || dy))
+                    rdr_input_look_share(dx, dy);
+                return;                     /* the stick's */
+            }
+            if (L->dead && frame - L->dead_frame > 600)
+                L->dead = 0;
+        }
+        if (L->dead && port == me && (dx || dy))
+            rdr_input_look_share(dx, dy);   /* being tried: the stick's too */
+        if (dt < 0.001f) dt = 0.001f;
+        if (dt > 0.5f) dt = 0.5f;
+        if (dx || dy) {
+            a = RDR_LOOK_RAD * (float)sens / 100.0f / dt;
+            L->ax = (float)(inv_x ? dx : -dx) * a / RDR_LOOK_KX;
+            L->ay = (float)(inv_y ? -dy : dy) * a / RDR_LOOK_KY;
+        }
+    }
+    if (!(L->ax || L->ay))
+        return;
+    ax = look_channel(cont, 14);
+    ay = look_channel(cont, 15);
+    if (!ax || !ay)
+        return;
+    *ax += L->ax;
+    *ay += L->ay;
+}
+
 static uint32_t g_look_cont;
 
 /* Tests (RDR_OVERLAY_FLAG "look"): the camera's bearing and tilt as the
@@ -554,7 +657,10 @@ static int mouse2_is_for(uint32_t player)
 
 static void wrapped_get_channel(void)
 {
-    if (guest_rd32(g_esp) == RDR_LOOK_RET) {
+    if (guest_rd32(g_esp) == RDR_LOOK_RET && rdr_lockstep_mode() == 4) {
+        g_look_cont = g_ecx;
+        mouse_look_net(g_ecx, g_edi);   /* every player's, from the pads */
+    } else if (guest_rd32(g_esp) == RDR_LOOK_RET) {
         if (mouse2_is_for(g_edi)) {
             s_look_cont2 = g_ecx;
             mouse_look(g_ecx, 1);
@@ -4486,6 +4592,23 @@ extern int rdr_duel_mouse_scale(void);      /* rdr_settings.c: % */
  * the slow motion ended). RDR_DUEL_AIM3=0: the stick there, as before. */
 static int s_duel_aim3 = 1;
 
+/* The duel's aim (states 3 and 4, the draw's slow motion with
+ * s_duel_aim3) is where the mouse moves the cursor itself. */
+static int duel_cursor_state(void)
+{
+    uint32_t idx = guest_rd32(0x00652024u), p, o, st;
+    if (idx > 3)
+        idx = 0;
+    p = guest_rd32(0x00675930u + idx * 4u);
+    if (p < 0x80000000u || p >= 0x84000000u)
+        return 0;
+    o = guest_rd32(p + 0x190);
+    if (o < 0x80000000u || o >= 0x84000000u)
+        return 0;
+    st = guest_rd32(o);
+    return st == 4 || (st == 3 && s_duel_aim3);
+}
+
 static void duel_mouse_aim(uint32_t c)
 {
     uint32_t idx = guest_rd32(0x00652024u), p, o;
@@ -4534,6 +4657,34 @@ static void duel_mouse_aim(uint32_t c)
                     *(volatile float *)(mm + 0x0040652Cu), nt - lt3);
             lt3 = nt;
         }
+        return;
+    }
+    if (rdr_lockstep_mode() == 4) {
+        /* Online: the dueller's mouse, from its pad for the frame (every
+         * machine alike), once a frame; with its settings */
+        static uint32_t done_frame = 0xFFFFFFFFu;
+        uint32_t fr = guest_rd32(RDR_FRAME_COUNT);
+        int port = player_port(p), dsens;
+        volatile uint8_t *m = (volatile uint8_t *)(uintptr_t)xbox_GetMemoryOffset();
+        volatile float *x = (volatile float *)(m + p + 0x67C), *y = (volatile float *)(m + p + 0x680);
+        float k, nx, ny;
+        rdr_input_duel_aim_seen();
+        if (port < 0 || fr == done_frame || !rdr_ls_mouse(port, &dx, &dy, &sens, &dsens, &ix, &iy))
+            return;
+        done_frame = fr;
+        if (!dx && !dy)
+            return;
+        k = (float)sens / 100.0f * (float)dsens / 100.0f / 1600.0f;
+        nx = *x + (float)(ix ? -dx : dx) * k;
+        ny = *y + (float)(iy ? dy : -dy) * k;
+        if (nx > 1.2f) nx = 1.2f;
+        if (nx < -1.2f) nx = -1.2f;
+        if (ny > 1.2f) ny = 1.2f;
+        if (ny < -1.2f) ny = -1.2f;
+        *x = nx;
+        *y = ny;
+        *(volatile float *)(m + p + 0x87C) = 0.0f;
+        *(volatile float *)(m + p + 0x880) = 0.0f;
         return;
     }
     if (!rdr_mouse_settings(&sens, &ix, &iy))
@@ -6884,6 +7035,11 @@ static void ui_sound_run(void)
 void rdr_desk_pad(uint32_t st)
 {
     static int down;
+    /* The menus' sounds run the game's own sound code: online, on one
+     * machine only, they would make its sound player differ from the
+     * others' (voices taken, the next sound's voice): none online. */
+    if (s_ui_sound && rdr_lockstep_mode() == 4)
+        s_ui_sound = 0;
     if (s_ui_sound)
         ui_sound_run();
     if (s_cmd_local_n > 0 && rdr_in_level())

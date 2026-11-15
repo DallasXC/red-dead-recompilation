@@ -3098,6 +3098,51 @@ the rest of the frame thrown away, and no step at all when the
     settled; 80 ms with jitter and loss, 5-6 (frames of ~60 ms there); no
     waits for pads in either game after the start.
 
+233. **Online: the mouse split the games.** Looked for what one machine
+    writes into the game that the others do not: mouse_look added the
+    mouse's counts to the camera's input channels (14, 15) of the player
+    the local keyboard and mouse belong to (rdr_kbm_port: on a guest,
+    player 1's, the host's player), and duel_mouse_aim moved the duel
+    cursor (+0x67C/0x680), on that machine only, by the wall clock; and
+    the menus' sounds (113, rdr_ui_sound) ran sub_0009B400 on one machine.
+    Keyboard and mouse are on by default since 1.1.1, so the first move of
+    a mouse in play parted the games. Now the mouse crosses with the pads:
+    a player's frame is 31 bytes (the gamepad 18, the command 4, the
+    mouse's counts x and y s16, its sensitivity and duel sensitivity u16,
+    the inverts), taken by rdr_input_take_look_net in place of
+    rdr_input_take_look (so it is not the stick too); counts that do not
+    fit wait, the frames a delay going up fills get none, a frame left out
+    by the delay going down keeps its counts for the next. Every machine
+    turns every player's camera with that player's counts and settings
+    (mouse_look_net: the port from the player's pad object +0x894; whether
+    the camera turns with it by the game's frames, 30 for half a second,
+    600 for ten, not the clock), and the dueller's cursor (once a frame);
+    what goes to the stick instead (a camera that does not turn with it,
+    the duel's grab and draw) goes to this machine's own player's stick,
+    into its next pads. Menus' sounds: none online. LB_VERSION 9 (the
+    pads' size changed: an older build cannot join). Harness, host and
+    guest on one machine, story co-op chapter 1, the guest's then the
+    host's mouse held (mousehold) with the left stick up, then the guest's
+    again with the stick right: in step throughout (no parting).
+234. **Online: what comes in is checked.** The lockstep port is open to
+    the internet and took anything that looked like a pad: a stray or
+    forged packet could move a player on one machine only, run a command
+    (rdr_cmd: weapons, spawns) or wipe a pad not yet used (a far frame in
+    the same ring slot). Now pads are taken by the host only from the
+    guest that has that player, by a guest only from the host; never for
+    this machine's own player; only for frames within 64 of the current;
+    the first word for a frame stands. Fingerprints, pings and the start's
+    welcome and go only from the host or a known guest. A guest says hello
+    again every half second until the go comes, and the host answers a
+    known guest's hello with the go again once it has started (a lost go
+    left a guest at the start for good). A frame waiting over 5 s names
+    the player it waits for and how long since anything came from them,
+    and says how to stop waiting. The lobby's hello and welcome carry how
+    each game was built (version and compiler, build_name): two compilers'
+    maths libraries can differ in a last bit, so the lobby tells both
+    players, without refusing. Harness: as 233, and the runs of 231, 232
+    again.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

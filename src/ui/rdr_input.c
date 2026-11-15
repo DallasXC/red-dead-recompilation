@@ -821,6 +821,28 @@ int rdr_input_take_look(long *dx, long *dy)
     return 1;
 }
 
+/* Online: the mouse's counts go out with the pad, every frame (the
+ * lockstep, rdr_lockstep.c mouse_into), and every machine turns this
+ * player's camera or moves its duel cursor with them alike (rdr_overrides.c,
+ * mouse_look_net). Taken here as rdr_input_take_look takes them, so while
+ * they are, the mouse is not the right stick too (only what the camera
+ * hook gives back to it, rdr_input_look_share). With the settings that
+ * turn them into movement: the other machines use this player's. */
+int rdr_input_take_look_net(long *dx, long *dy, int *sens, int *duel_sens, int *inv_x, int *inv_y)
+{
+    *dx = *dy = 0;
+    *sens = g_rdr_settings.mouse_sens;
+    *duel_sens = g_rdr_settings.mouse_duel_sens;
+    *inv_x = g_rdr_settings.mouse_invert_x;
+    *inv_y = g_rdr_settings.mouse_invert_y;
+    if (!g_rdr_settings.mouse_aim || rdr_menu_mode())
+        return 0;                           /* menus: the counts are theirs */
+    *dx = (long)InterlockedExchange(&s_dx, 0);
+    *dy = (long)InterlockedExchange(&s_dy, 0);
+    s_direct_ns = xbox_HostNowNs();
+    return 1;
+}
+
 /* The camera hook took counts it is not sure the camera turns with
  * (rdr_overrides.c, mouse_look): the right stick gets them too. */
 static volatile long s_share_dx, s_share_dy;

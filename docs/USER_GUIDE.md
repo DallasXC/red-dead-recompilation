@@ -488,6 +488,13 @@ themselves: the host's save goes to everyone, every game starts again,
 and the story continues from the start of the chapter you were in.
 Nobody has to leave and join again. After five times in one session it
 stops trying, and the line at the top says to start again.
+
+Keyboard and mouse work online too: the mouse goes over the network with
+the rest of your controls. Both PCs should be built the same way (the
+same version, and the same compiler that build.bat asked for); the lobby
+says when they are not. If someone stops answering, the line at the top
+names them after 5 seconds; Online Co-op > Leave the online game stops
+waiting.
 **Online Co-op > Leave the online game** goes back to your own game.
 
 How it works: [ONLINE.md](ONLINE.md). (An older, experimental way, where

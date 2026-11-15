@@ -448,15 +448,21 @@ static int in_heap(uint32_t a) { return a >= 0x80000000u && a < 0x84000000u; }
 
 #define LSN_MAGIC 0x534C4452u     /* "RDLS" */
 #define LSN_RING  1024
-#define LSN_PAD   22              /* XINPUT_GAMEPAD (18), then a command (rdr_cmd: 4) */
+/* A player's frame: the XINPUT_GAMEPAD (18), a command (rdr_cmd: 4), and
+ * the mouse (its counts this frame, x and y, s16; the player's mouse
+ * sensitivity and duel aim sensitivity, %, u16 each; bit 0 x inverted,
+ * bit 1 y): every machine turns that player's camera and moves its duel
+ * cursor with it alike (rdr_overrides.c, mouse_look_net, duel_mouse_aim) */
+#define LSN_PAD   31
 #define LSN_GAMEPAD 18
+#define LSN_MOUSE 22
 enum { LSN_HELLO = 1, LSN_WELCOME = 2, LSN_INPUT = 3, LSN_HASH = 4, LSN_GO = 5,
        LSN_PING = 6, LSN_PONG = 7,
        LSN_RS = 8, LSN_RS_CHUNK = 9, LSN_RS_NEED = 10, LSN_RS_READY = 11, LSN_RS_GO = 12 };
 #define LSN_RS_CHUNK_N 1000
 
 typedef struct { int used; RdrAddr addr; int port; } LsPeer;
-static int s_ns = -1, s_host, s_me, s_players = 1, s_delay = 3, s_go, s_want_slot;
+static int s_ns = -1, s_host, s_me, s_players = 1, s_delay = 3, s_go, s_want_slot, s_go_sent;
 static uint32_t s_session;              /* the lobby's game (RDR_LS_SESSION), 0 none */
 static RdrAddr s_host_addr;
 static LsPeer s_peer[4];
@@ -577,6 +583,8 @@ static void lsn_put(int port, uint32_t frame, const uint8_t *pad)
 /* What the player is told (the overlay, rdr_ls_status): waiting for the
  * others, or the games parted. */
 static volatile int s_wait_state;               /* 0, 1 waiting for players, 2 for the host/guests to join */
+static uint64_t s_heard_ms[4];                  /* the last pad that came for each player */
+static volatile int s_wait_for = -1, s_wait_secs;   /* the player a frame waits for, how long */
 static volatile uint32_t s_parted_at = 0xFFFFFFFFu;
 static volatile int s_rs_state;                 /* 0; 1 starting again together; 2 that failed */
 static int s_resyncs, s_resync_max = 5;         /* this session's restarts so far (RDR_LS_RESYNC); the most */
@@ -595,6 +603,9 @@ int rdr_ls_status(char *buf, int n)
         snprintf(buf, (size_t)n, "Online: started again after the games parted; waiting for everyone...");
     else if (s_wait_state == 2)
         snprintf(buf, (size_t)n, s_host ? "Online: waiting for the other players to join..." : "Online: looking for the host...");
+    else if (s_wait_state == 1 && s_wait_for >= 0 && s_wait_secs >= 5)
+        snprintf(buf, (size_t)n, "Online: no word from player %d for %d s (a slow connection, or their game "
+                 "stopped). Online Co-op > Leave the online game to stop waiting", s_wait_for + 1, s_wait_secs);
     else if (s_wait_state == 1)
         snprintf(buf, (size_t)n, "Online: waiting for the other players...");
     else
@@ -1013,27 +1024,49 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
             if (slot > 0) {
                 uint8_t w[2] = { (uint8_t)slot, (uint8_t)s_players };
                 lsn_send(from, LSN_WELCOME, w, 2);
+                if (s_go_sent)
+                    lsn_send(from, LSN_GO, NULL, 0);    /* (its go was lost: it asks again) */
             }
         }
         break;
     case LSN_WELCOME:
-        if (!s_host && n >= 7 && s_me < 0) {
+        if (!s_host && n >= 7 && s_me < 0 && rdr_addr_same(from, &s_host_addr) && b[5] >= 1 && b[5] < 4 &&
+            b[6] >= 2 && b[6] <= 4 && b[5] < b[6]) {
             s_me = b[5];
             s_players = b[6];
             fprintf(stderr, "[LS] joined: player %d of %d\n", s_me + 1, s_players);
         }
         break;
     case LSN_GO:
-        s_go = 1;
+        if (!s_host && rdr_addr_same(from, &s_host_addr))
+            s_go = 1;
         break;
     case LSN_INPUT:
+        /* Only from who has that player: the host takes a guest's own
+         * pads from that guest; a guest takes pads from the host only (its
+         * own and the other guests', passed on). Never this machine's own
+         * player, and only for frames near ours: a stray or forged packet
+         * (the port is open to the internet) could otherwise move a player
+         * on one machine only, run a command, or wipe a pad not yet used. */
         if (n >= 11) {
-            int port = b[5], cnt = b[6];
-            uint32_t first;
+            int port = b[5], cnt = b[6], k = s_host ? rs_peer_of(from) : -1;
+            uint32_t first, now_f = cur_frame();
             memcpy(&first, b + 7, 4);
-            if (port < 4 && n >= 11 + cnt * LSN_PAD) {
-                for (i = 0; i < cnt; i++)
-                    lsn_put(port, first + (uint32_t)i, b + 11 + i * LSN_PAD);
+            if (port >= s_players || port == s_me || cnt < 1 || cnt > 16)
+                break;
+            if (s_host ? (k < 0 || s_peer[k].port != port) : !rdr_addr_same(from, &s_host_addr))
+                break;
+            if (first + (uint32_t)cnt + 64u < now_f || first > now_f + 64u)
+                break;
+            if (n >= 11 + cnt * LSN_PAD) {
+                for (i = 0; i < cnt; i++) {
+                    uint32_t f = first + (uint32_t)i;
+                    /* the first word for a frame stands (a resend is the
+                     * same; nothing later replaces a pad) */
+                    if (s_in_frame[f % LSN_RING][port] != f + 1)
+                        lsn_put(port, f, b + 11 + i * LSN_PAD);
+                }
+                s_heard_ms[port] = rdr_net_now_ms();
                 if (s_host)             /* passed on to the other guests */
                     for (i = 1; i < 4; i++)
                         if (s_peer[i].used && s_peer[i].port != port)
@@ -1042,10 +1075,12 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
         }
         break;
     case LSN_HASH:
-        if (n >= 13) {
-            uint32_t f, h;
+        if (n >= 13 && (s_host ? rs_peer_of(from) > 0 : rdr_addr_same(from, &s_host_addr))) {
+            uint32_t f, h, now_f = cur_frame();
             memcpy(&f, b + 5, 4);
             memcpy(&h, b + 9, 4);
+            if (f + 256u < now_f || f > now_f + 256u)
+                break;                          /* (not this game's, or long gone) */
             /* a machine may be a few frames ahead (the input delay): a
              * fingerprint of a frame not ours yet waits for ours */
             if (s_hash_f[f % LSN_RING] == f + 1)
@@ -1061,7 +1096,7 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
         }
         break;
     case LSN_PING:
-        if (n >= 9) {
+        if (n >= 9 && (s_host ? rs_peer_of(from) > 0 : rdr_addr_same(from, &s_host_addr))) {
             /* back at once, with (the host's) the longest trip to the
              * other guests: a guest's pads go on from the host */
             uint8_t r[7];
@@ -1078,7 +1113,7 @@ static void lsn_handle(const uint8_t *b, int n, const RdrAddr *from)
         }
         break;
     case LSN_PONG:
-        if (n >= 12) {
+        if (n >= 12 && (s_host ? rs_peer_of(from) > 0 : rdr_addr_same(from, &s_host_addr))) {
             uint32_t t;
             uint16_t relay;
             int k = s_host ? rs_peer_of(from) : 0;
@@ -1310,6 +1345,58 @@ static uint32_t ls_take_cmd(void)
 static uint32_t s_last_put;
 static uint8_t s_carry[LSN_GAMEPAD];
 static int s_carry_on;
+static long s_mouse_acc_x, s_mouse_acc_y;      /* counts not sent yet */
+
+/* A player's mouse for this frame (online): 1 and its counts and settings
+ * if the frame's pad is in, else 0 */
+int rdr_ls_mouse(int port, long *dx, long *dy, int *sens, int *duel_sens, int *inv_x, int *inv_y)
+{
+    uint32_t f = cur_frame(), k = f % LSN_RING;
+    const uint8_t *m;
+    int16_t x, y;
+    uint16_t a, b;
+    if (rdr_lockstep_mode() != 4 || port < 0 || port > 3 || s_in_frame[k][port] != f + 1)
+        return 0;
+    m = s_in[k][port] + LSN_MOUSE;
+    memcpy(&x, m, 2);
+    memcpy(&y, m + 2, 2);
+    memcpy(&a, m + 4, 2);
+    memcpy(&b, m + 6, 2);
+    *dx = x;
+    *dy = y;
+    *sens = a ? a : 100;
+    *duel_sens = b ? b : 100;
+    *inv_x = m[8] & 1;
+    *inv_y = (m[8] >> 1) & 1;
+    return 1;
+}
+
+/* this machine's mouse into its pad for the frame (the counts since the
+ * last, and its settings), what does not fit kept for the next */
+static void mouse_into(uint8_t *pad)
+{
+    extern int rdr_input_take_look_net(long *dx, long *dy, int *sens, int *duel_sens, int *inv_x, int *inv_y);
+    long dx = 0, dy = 0, sx, sy;
+    int sens = 100, dsens = 100, ix = 0, iy = 0;
+    int16_t x, y;
+    uint16_t a, b;
+    rdr_input_take_look_net(&dx, &dy, &sens, &dsens, &ix, &iy);
+    s_mouse_acc_x += dx;
+    s_mouse_acc_y += dy;
+    sx = s_mouse_acc_x > 32767 ? 32767 : s_mouse_acc_x < -32767 ? -32767 : s_mouse_acc_x;
+    sy = s_mouse_acc_y > 32767 ? 32767 : s_mouse_acc_y < -32767 ? -32767 : s_mouse_acc_y;
+    s_mouse_acc_x -= sx;
+    s_mouse_acc_y -= sy;
+    x = (int16_t)sx;
+    y = (int16_t)sy;
+    a = (uint16_t)sens;
+    b = (uint16_t)dsens;
+    memcpy(pad + LSN_MOUSE, &x, 2);
+    memcpy(pad + LSN_MOUSE + 2, &y, 2);
+    memcpy(pad + LSN_MOUSE + 4, &a, 2);
+    memcpy(pad + LSN_MOUSE + 6, &b, 2);
+    pad[LSN_MOUSE + 8] = (uint8_t)((ix ? 1 : 0) | (iy ? 2 : 0));
+}
 
 /* The start: everyone in (the host says go), then frame by frame. */
 static void ls_net_frame(uint32_t frame, uint32_t hash)
@@ -1346,11 +1433,14 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
                     for (k = 0; k < 10; k++)
                         for (p = 1; p < s_players; p++)
                             lsn_send(&s_peer[p].addr, LSN_GO, NULL, 0);
+                    s_go_sent = 1;
                     break;
                 }
             } else {
                 static uint64_t hello_t;
-                if (s_me < 0 && rdr_net_now_ms() - hello_t >= 250) {
+                /* hello until welcomed, and again now and then until the
+                 * go comes (a lost go is sent again for it) */
+                if (rdr_net_now_ms() - hello_t >= (s_me < 0 ? 250u : 500u)) {
                     uint8_t hb[5];
                     hb[0] = (uint8_t)s_want_slot;
                     memcpy(hb + 1, &s_session, 4);
@@ -1421,8 +1511,15 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
             if (target <= s_last_put) {
                 /* the delay went down: this frame's pad has no frame of its
                  * own; its buttons wait for the next (a command waits in
-                 * the queue) */
+                 * the queue, the mouse's counts in theirs) */
                 uint16_t w0, w1;
+                extern int rdr_input_take_look_net(long *dx, long *dy, int *sens, int *duel_sens, int *inv_x,
+                                                   int *inv_y);
+                long dx = 0, dy = 0;
+                int a, b, c2, d2;
+                rdr_input_take_look_net(&dx, &dy, &a, &b, &c2, &d2);
+                s_mouse_acc_x += dx;
+                s_mouse_acc_y += dy;
                 if (!s_carry_on) {
                     memcpy(s_carry, mine, LSN_GAMEPAD);
                     s_carry_on = 1;
@@ -1446,12 +1543,14 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
                             mine[k] = s_carry[k];
                     s_carry_on = 0;
                 }
-                memset(mine + LSN_GAMEPAD, 0, 4);
+                memset(mine + LSN_GAMEPAD, 0, LSN_PAD - LSN_GAMEPAD);
                 /* the delay went up: the frames between get this pad too
-                 * (no command: it goes once, on its own frame) */
+                 * (no command and no mouse counts: they go once, on their
+                 * own frame) */
                 for (f2 = s_last_put + 1; f2 < target; f2++)
                     lsn_put(s_me, f2, mine);
                 memcpy(mine + LSN_GAMEPAD, &c, 4);
+                mouse_into(mine);
                 lsn_put(s_me, target, mine);
                 s_last_put = target;
             }
@@ -1515,11 +1614,18 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
             all &= s_in_frame[frame % LSN_RING][p] == frame + 1;
         if (all)
             break;
-        if (now - t0 >= 500)
+        if (now - t0 >= 500) {
             s_wait_state = 1;
+            for (p = 0; p < s_players; p++)
+                if (s_in_frame[frame % LSN_RING][p] != frame + 1) {
+                    s_wait_for = p;
+                    s_wait_secs = (int)((now - (s_heard_ms[p] ? s_heard_ms[p] : t0)) / 1000);
+                    break;
+                }
+        }
         if (now - last_say >= 3000) {
-            fprintf(stderr, "[LS] frame %u: waiting for the other players' pads (%u ms)\n", frame,
-                    (unsigned)(now - t0));
+            fprintf(stderr, "[LS] frame %u: waiting for player %d's pad (%u ms; nothing from them for %d s)\n",
+                    frame, s_wait_for + 1, (unsigned)(now - t0), s_wait_secs);
             last_say = now;
         }
         {
@@ -1532,6 +1638,7 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
         }
     }
     s_wait_state = 0;
+    s_wait_for = -1;
 }
 
 void rdr_ls_frame(uint32_t ret)

@@ -16,6 +16,22 @@ items).
   everyone, so over the internet each frame stopped to wait for the other
   PC; each PC now measures its ping and sets its own delay (2 to 15
   frames), and lowers it again when the connection gets better (232).
+- **Online: the mouse no longer splits the games.** The mouse turned the
+  camera, and moved the duel cursor, on its own PC only, straight into
+  the game, so the first move of a mouse in play (keyboard and mouse are
+  on by default) made the games fall out of step. The mouse now goes over
+  the network with the controller, and every PC turns that player's
+  camera alike (233).
+- **Online: the menus' sounds are off** while playing online: they ran
+  the game's own sound code on one PC only (233).
+- **Online: stray packets are ignored.** A player's moves are only taken
+  from that player's PC (through the host), and only for frames near the
+  current one; a lost "go" at the start is sent again. A player who stops
+  answering is named on screen after 5 seconds, with how to stop waiting
+  (234).
+- **Online: the lobby says when two PCs' games were built differently**
+  (another version or compiler), which can make games fall out of step
+  (234).
 
 ## 1.2.1 (November 2026)
 
