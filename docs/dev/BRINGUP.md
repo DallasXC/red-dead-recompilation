@@ -3240,6 +3240,24 @@ the rest of the frame thrown away, and no step at all when the
     ("rand xN: ..."). Entry hooks change the generated code: the next
     build regenerates it.
 
+241. **Online: a fade's start left the games a frame apart.** The user's
+    next session (with 240's rand record): parted at 1710. The two logs'
+    frames were the same frames shifted by one: the guest's 1689 was the
+    host's 1688 (the same rand calls, the same number), after a stretch
+    where the game drew only 7 (053321 x6, 0E736B) with the number
+    standing still, 1683-1686 on the host, 1683-1687 on the guest; the
+    second number (the fade's grain, 0x0040C094) moved on the guest at 1683
+    and on the host at 1688. A cut to a cutscene: the fade's thread
+    (start 0x00012242, context 0x00106720, one thread per fade: its routine
+    runs sub_00105B40 and ends) was created, and the frame boundary waited
+    only while [0x00663338] was set, which the thread sets once it runs; a
+    machine whose main loop reached the boundary before that counted one
+    more frame. Now the toolkit tells a hook of the title's thread
+    creations and ends (g_xbox_thread_hook: on the creating thread, and on
+    the thread as it ends), and the boundary waits from the fade thread's
+    creation until the fade has run and its flag is down again (or the
+    thread has ended; 10 s at most).
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

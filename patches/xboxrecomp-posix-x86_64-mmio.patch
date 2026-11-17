@@ -1644,7 +1644,7 @@ index db45d05..ea93726 100644
  
  if(MSVC)
 diff --git a/src/kernel/kernel.h b/src/kernel/kernel.h
-index 4a6389d..74790a0 100644
+index 4a6389d..e63e3dc 100644
 --- a/src/kernel/kernel.h
 +++ b/src/kernel/kernel.h
 @@ -88,6 +88,9 @@ enum {
@@ -1657,7 +1657,15 @@ index 4a6389d..74790a0 100644
  #ifndef STATUS_INVALID_HANDLE
  #define STATUS_INVALID_HANDLE           ((NTSTATUS)0xC0000008L)
  #endif
-@@ -849,6 +852,7 @@ NTSTATUS __stdcall xbox_NtCreateMutant(PHANDLE MutantHandle, PXBOX_OBJECT_ATTRIB
+@@ -568,6 +571,7 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
+  * device rule matches reach it: partition images and unrecognised paths
+  * do not. */
+ extern void (*g_xbox_path_hook)(const char *xbox_path);
++extern void (*g_xbox_thread_hook)(int event, uint32_t routine, uint32_t ctx1);
+ 
+ /*
+  * Which tree a guest path lands in, from the same rule that translates it
+@@ -849,6 +853,7 @@ NTSTATUS __stdcall xbox_NtCreateMutant(PHANDLE MutantHandle, PXBOX_OBJECT_ATTRIB
  NTSTATUS __stdcall xbox_NtReleaseMutant(HANDLE MutantHandle, PLONG PreviousCount);
  
  LONG     __stdcall xbox_KeSetEvent(PVOID Event, LONG Increment, BOOLEAN Wait);
@@ -1665,7 +1673,7 @@ index 4a6389d..74790a0 100644
  NTSTATUS __stdcall xbox_KeWaitForSingleObject(PVOID Object, ULONG WaitReason, KPROCESSOR_MODE WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout);
  NTSTATUS __stdcall xbox_KeWaitForMultipleObjects(ULONG Count, PVOID Objects[], ULONG WaitType, ULONG WaitReason, KPROCESSOR_MODE WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout, PVOID WaitBlockArray);
  
-@@ -1222,11 +1226,21 @@ NTSTATUS __stdcall xbox_ExSaveNonVolatileSetting(ULONG ValueIndex, ULONG Type, P
+@@ -1222,11 +1227,21 @@ NTSTATUS __stdcall xbox_ExSaveNonVolatileSetting(ULONG ValueIndex, ULONG Type, P
  #define XC_PARENTAL_CONTROL       XC_P_CONTROL_GAMES
  #define XC_PARENTAL_PASSWORD      XC_P_CONTROL_PASSWORD
  
@@ -1691,10 +1699,24 @@ index 4a6389d..74790a0 100644
  /* Unknown ordinals - stub */
  VOID    __stdcall xbox_Unknown_8(void);
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index 10d00f4..e33a52f 100644
+index 10d00f4..c31be14 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
-@@ -474,8 +474,68 @@ static int bridge_run_io_apcs(uint32_t alertable, uint32_t wait_mode);
+@@ -449,6 +449,13 @@ static int g_thread_call_count = 0;
+  * `ret` consumes, and runs. */
+ /* Set on threads this bridge spawned; see PsTerminateSystemThread. */
+ static RECOMP_TLS int g_is_spawned_thread = 0;
++/* A title's own code told of its threads: 1 when one is created (on the
++ * creating thread, with its start routine and first context), 2 when one
++ * ends (on that thread, with the context it started with). Lockstep play
++ * uses it to count a thread's work at the point its creator asked for it,
++ * not at whatever moment the host first ran it. */
++void (*g_xbox_thread_hook)(int event, uint32_t routine, uint32_t ctx1) = NULL;
++static RECOMP_TLS uint32_t t_start_ctx1;
+ 
+ /* This thread's simulated stack, so both exits can give it back. Thread-local
+  * for the obvious reason, and needed at all because the common exit is
+@@ -474,8 +481,68 @@ static int bridge_run_io_apcs(uint32_t alertable, uint32_t wait_mode);
  struct bridge_thread_start {
      recomp_func_t fn;
      uint32_t ctx1, ctx2, stack_top, obj_va, tls_size;
@@ -1763,7 +1785,7 @@ index 10d00f4..e33a52f 100644
  /* Lay out a thread's TLS the way the Xbox kernel does.
   *
   * PsCreateSystemThreadEx takes a TlsDataSize, and the kernel carves that many
-@@ -715,6 +775,7 @@ static DWORD WINAPI bridge_thread_main(LPVOID param)
+@@ -715,6 +782,7 @@ static DWORD WINAPI bridge_thread_main(LPVOID param)
      struct bridge_thread_start *s = (struct bridge_thread_start *)param;
      recomp_func_t fn = s->fn;
      uint32_t ctx1 = s->ctx1, ctx2 = s->ctx2;
@@ -1771,7 +1793,15 @@ index 10d00f4..e33a52f 100644
  
      /* Own register set (RECOMP_TLS), own simulated stack -- and own TIB.
       *
-@@ -750,6 +811,10 @@ static DWORD WINAPI bridge_thread_main(LPVOID param)
+@@ -723,6 +791,7 @@ static DWORD WINAPI bridge_thread_main(LPVOID param)
+      * for every thread, which is how two of them ended up inside _lock() each
+      * holding the lock the other wanted. */
+     g_is_spawned_thread = 1;
++    t_start_ctx1 = ctx1;
+     g_esp = s->stack_top;
+     g_thread_stack_top = s->stack_top;
+     g_thread_obj_va = s->obj_va;
+@@ -750,12 +819,18 @@ static DWORD WINAPI bridge_thread_main(LPVOID param)
       * neither. */
      xbox_DpcMarkGuestThread();
      xbox_GuestThreadPin("guest-worker");
@@ -1782,7 +1812,15 @@ index 10d00f4..e33a52f 100644
      guest_cpu_join();
      bridge_run_thread_inline(fn, ctx1, ctx2);
      guest_cpu_part();
-@@ -776,10 +841,19 @@ static HANDLE bridge_spawn_thread(recomp_func_t fn, uint32_t ctx1,
+ 
+     fprintf(stderr, "  [KERNEL] worker thread returned (eax=0x%08X)\n", g_eax);
+     fflush(stderr);
++    if (g_xbox_thread_hook)
++        g_xbox_thread_hook(2, 0, t_start_ctx1);
+     /* The routine returned instead of calling PsTerminateSystemThread; the
+      * stack is still ours to give back. */
+     xbox_FreeThreadStack(g_thread_stack_top);
+@@ -776,10 +851,19 @@ static HANDLE bridge_spawn_thread(recomp_func_t fn, uint32_t ctx1,
  
      if (!s) return NULL;
      s->fn = fn; s->ctx1 = ctx1; s->ctx2 = ctx2; s->stack_top = stack_top;
@@ -1803,7 +1841,7 @@ index 10d00f4..e33a52f 100644
      if (!th) free(s);
      /* Record the game thread so a host-tick-driven title's watchdog can sample
       * it via xbox_thread_debug_handle. Harmless for default-model titles: they
-@@ -838,6 +912,10 @@ static void bridge_PsCreateSystemThreadEx(void)
+@@ -838,6 +922,10 @@ static void bridge_PsCreateSystemThreadEx(void)
      uint32_t start_context1  = STACK_ARG(5);
      uint32_t start_context2  = STACK_ARG(6);
      uint32_t start_routine   = STACK_ARG(9);
@@ -1814,7 +1852,16 @@ index 10d00f4..e33a52f 100644
      /* In SPAWN mode there is no privileged "first call": every thread is real,
       * so the entry can return. In INLINE mode the first call runs the game. */
      int is_first_call = (g_thread_mode == XBOX_THREAD_MODE_INLINE)
-@@ -942,12 +1020,25 @@ static void bridge_PsCreateSystemThreadEx(void)
+@@ -847,6 +935,8 @@ static void bridge_PsCreateSystemThreadEx(void)
+     fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx #%d: routine=0x%08X ctx1=0x%08X ctx2=0x%08X\n",
+             g_thread_call_count, start_routine, start_context1, start_context2);
+     fflush(stderr);
++    if (g_xbox_thread_hook)
++        g_xbox_thread_hook(1, start_routine, start_context1);
+ 
+     /* Write a fake handle to the output pointer */
+     if (xbox_handle_ptr) {
+@@ -942,12 +1032,25 @@ static void bridge_PsCreateSystemThreadEx(void)
                      fflush(stderr);
                      bridge_run_thread_inline(fn, start_context1, start_context2);
                  } else {
@@ -1845,7 +1892,7 @@ index 10d00f4..e33a52f 100644
                      fflush(stderr);
                  }
              }
-@@ -1753,7 +1844,8 @@ static void bridge_ExQueryNonVolatileSetting(void)
+@@ -1753,7 +1856,8 @@ static void bridge_ExQueryNonVolatileSetting(void)
  /* HalReturnToFirmware(Routine) - the title asking to reboot or quit.
   *
   * It never returns on hardware. Returning here would let the game run on past
@@ -1855,7 +1902,7 @@ index 10d00f4..e33a52f 100644
  static void bridge_HalReturnToFirmware(void)
  {
      uint32_t routine = STACK_ARG(0);
-@@ -1790,6 +1882,38 @@ static void bridge_HalReturnToFirmware(void)
+@@ -1790,6 +1894,38 @@ static void bridge_HalReturnToFirmware(void)
          }
      }
  
@@ -1894,7 +1941,7 @@ index 10d00f4..e33a52f 100644
      /* Who asked to quit.
       *
       * A title exiting looks identical whether it finished cleanly, hit an
-@@ -2034,6 +2158,27 @@ static void bridge_KeSetEvent(void)
+@@ -2034,6 +2170,27 @@ static void bridge_KeSetEvent(void)
          g_eax = 0;
  }
  
@@ -1922,7 +1969,7 @@ index 10d00f4..e33a52f 100644
  /* ── KeWaitForSingleObject (ordinal 159) ─────────────────── */
  static void bridge_KeWaitForSingleObject(void)
  {
-@@ -2344,11 +2489,63 @@ static void bridge_KeDelayExecutionThread(void)
+@@ -2344,11 +2501,63 @@ static void bridge_KeDelayExecutionThread(void)
   * failure surfaced later somewhere unrelated. Report the code and stop
   * pretending the call succeeded.
   */
@@ -1986,7 +2033,7 @@ index 10d00f4..e33a52f 100644
      g_eax = 0;
  }
  
-@@ -2359,6 +2556,16 @@ static void bridge_KeBugCheckEx(void)
+@@ -2359,6 +2568,16 @@ static void bridge_KeBugCheckEx(void)
              STACK_ARG(0), STACK_ARG(1), STACK_ARG(2),
              STACK_ARG(3), STACK_ARG(4));
      fflush(stderr);
@@ -2003,7 +2050,16 @@ index 10d00f4..e33a52f 100644
      g_eax = 0;
  }
  
-@@ -3224,20 +3431,49 @@ static void kernel_vblank_raise(void)
+@@ -2458,6 +2677,8 @@ static void bridge_PsTerminateSystemThread(void)
+     fprintf(stderr, "  [KERNEL] PsTerminateSystemThread: status=0x%08X%s\n",
+             exit_status, g_is_spawned_thread ? " (worker)" : " (main)");
+     fflush(stderr);
++    if (g_xbox_thread_hook && g_is_spawned_thread)
++        g_xbox_thread_hook(2, 0, t_start_ctx1);
+ 
+     g_eax = exit_status;
+ 
+@@ -3224,20 +3445,49 @@ static void kernel_vblank_raise(void)
   * edge, 0 when vblanks are off. */
  #define VBLANK_RESTART_NS 100000000ull
  
@@ -2056,7 +2112,7 @@ index 10d00f4..e33a52f 100644
      if (!started) {
          started = 1;
          t0_ns = now_ns;
-@@ -3257,6 +3493,7 @@ static int kernel_vblank_tick_ns(uint64_t now_ns, uint64_t *next_due_ns)
+@@ -3257,6 +3507,7 @@ static int kernel_vblank_tick_ns(uint64_t now_ns, uint64_t *next_due_ns)
      kernel_vblank_count(kernel_clock_ms());
      kernel_vblank_raise();
      return 1;
@@ -2064,7 +2120,7 @@ index 10d00f4..e33a52f 100644
  }
  
  /* RECOMP_VBLANK without the 60 Hz schedule: v0.14.0's tick, unchanged. On
-@@ -4188,6 +4425,37 @@ static NTSTATUS bridge_create_file_open(
+@@ -4188,6 +4439,37 @@ static NTSTATUS bridge_create_file_open(
  
      memset(&ios, 0, sizeof(ios));
  
@@ -2102,7 +2158,7 @@ index 10d00f4..e33a52f 100644
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
-@@ -4748,7 +5016,12 @@ static void bridge_NtReadFile(void)
+@@ -4748,7 +5030,12 @@ static void bridge_NtReadFile(void)
      /* What a read actually delivered. A decoder that rejects its input cannot
       * say whether the bytes were wrong or the read was, and the two look
       * identical from inside the title -- the first bytes settle it. */
@@ -2116,7 +2172,7 @@ index 10d00f4..e33a52f 100644
          const uint8_t *p = (const uint8_t *)XBOX_TO_NATIVE(buffer_va);
          uint32_t got = (uint32_t)ios.Information;
          /* The offset matters as much as the length. A title streaming a pack
-@@ -5640,6 +5913,17 @@ static void bridge_NtSuspendThread(void)
+@@ -5640,6 +5927,17 @@ static void bridge_NtSuspendThread(void)
  /* ── NtResumeThread (ordinal 224, 2 args) */
  static void bridge_NtResumeThread(void)
  {
@@ -2134,7 +2190,7 @@ index 10d00f4..e33a52f 100644
      g_eax = (uint32_t)xbox_NtResumeThread(
          bridge_resolve_handle(STACK_ARG(0)),
          (PULONG)XBOX_TO_NATIVE(STACK_ARG(1)));
-@@ -10801,6 +11085,95 @@ static void kernel_thunk_dispatch(void)
+@@ -10801,6 +11099,95 @@ static void kernel_thunk_dispatch(void)
          xbox_GuestCpuAcquire();
  }
  
@@ -2230,7 +2286,7 @@ index 10d00f4..e33a52f 100644
  static void kernel_thunk_dispatch_body(void)
  {
      int slot = g_kernel_dispatch_slot;
-@@ -10827,6 +11200,35 @@ static void kernel_thunk_dispatch_body(void)
+@@ -10827,6 +11214,35 @@ static void kernel_thunk_dispatch_body(void)
      if (ordinal < XBOX_KERNEL_THUNK_TABLE_SIZE)
          g_ordinal_calls[ordinal]++;
  
@@ -2266,7 +2322,7 @@ index 10d00f4..e33a52f 100644
      if (KERNEL_LOG_ON()) {
          /* The guest return address sits at the top of the guest stack: the
           * caller pushed it before dispatching here. Logging it turns "some
-@@ -10868,6 +11270,10 @@ static void kernel_thunk_dispatch_body(void)
+@@ -10868,6 +11284,10 @@ static void kernel_thunk_dispatch_body(void)
                              (unsigned long long)g_ordinal_calls[best]);
                  }
              }

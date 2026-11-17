@@ -25,6 +25,12 @@ items).
 - **Online: the Black bars setting no longer differs between PCs.** It
   wrote into the game, which also reads it outside the drawing; online
   the bars are left as the game has them (235).
+- **Online: a screen fade no longer puts one PC a frame behind.** A fade
+  runs on a thread of its own; online, the frame waited for it only once
+  the fade had begun, so a PC that reached the frame's end a moment before
+  the fade began counted one more frame than the other, and the games
+  parted at the next cutscene. The frame now waits from the moment the
+  fade is asked for (241).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the

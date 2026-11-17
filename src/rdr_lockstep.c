@@ -1687,9 +1687,41 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
     s_wait_for = -1;
 }
 
+/* A screen fade's thread, from its creation (on the main loop, at the
+ * same point on every machine) to its end: the frame waits for the whole
+ * of it. Waiting only while the fade's flag was set left a gap: the
+ * thread had been created but not yet run and set the flag, and a machine
+ * that reached the frame's end in that gap counted a frame the others did
+ * not (user logs: the same frames one frame apart from 1683 on, through a
+ * cut to a cutscene, parted by 1710). Toolkit: g_xbox_thread_hook. */
+#define LS_FADE_CTX 0x00106720u
+static volatile int s_fade_pending;
+static void ls_thread_hook(int event, uint32_t routine, uint32_t ctx1)
+{
+    (void)routine;
+    if (ctx1 != LS_FADE_CTX)
+        return;
+#if defined(_MSC_VER) && !defined(__clang__)
+    if (event == 1)
+        InterlockedIncrement((volatile LONG *)&s_fade_pending);
+    else if (event == 2 && s_fade_pending > 0)
+        InterlockedDecrement((volatile LONG *)&s_fade_pending);
+#else
+    if (event == 1)
+        __atomic_add_fetch(&s_fade_pending, 1, __ATOMIC_SEQ_CST);
+    else if (event == 2 && s_fade_pending > 0)
+        __atomic_sub_fetch(&s_fade_pending, 1, __ATOMIC_SEQ_CST);
+#endif
+}
+
 void rdr_ls_frame(uint32_t ret)
 {
     t_main_loop = 1;
+    {
+        extern void (*g_xbox_thread_hook)(int event, uint32_t routine, uint32_t ctx1);
+        if (s_mode && g_xbox_thread_hook != ls_thread_hook)
+            g_xbox_thread_hook = ls_thread_hook;
+    }
     uint32_t f, h = 2166136261u, cnt, k, v;
     static uint32_t last_ret;
     static int was_loading;
@@ -1752,11 +1784,22 @@ void rdr_ls_frame(uint32_t ret)
         uint64_t t0 = 0;
         int waited = 0;
         extern uint64_t rdr_net_now_ms(void);
-        while (*gm(0x00663338u)) {
+        int seen = 0;
+        while (*gm(0x00663338u) || s_fade_pending > 0) {
             if (!t0)
                 t0 = rdr_net_now_ms();
-            if (rdr_net_now_ms() - t0 > 10000)
+            /* the fade's own end is enough: its thread's last steps need
+             * not be waited for */
+            if (*gm(0x00663338u))
+                seen = 1;
+            else if (seen) {
+                s_fade_pending = 0;
                 break;
+            }
+            if (rdr_net_now_ms() - t0 > 10000) {
+                s_fade_pending = 0;
+                break;
+            }
             extern void rdr_net_sleep_ms(int ms);
             extern int xbox_GuestCpuRelease(int kind, uint32_t where);
             extern void xbox_GuestCpuAcquire(void);
