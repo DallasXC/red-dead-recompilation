@@ -662,10 +662,27 @@ void sub_000705A0(void)
          * game came out of it at a frame of its own (users, Chapter 2's
          * bridge01.bik: the host waited 100 s for the guest, then the
          * games had parted). Every game skips it the same way. */
+        /* Since 245: the movies the main loop plays itself (sub_000179F0:
+         * a chapter's and a level's cutscenes, called from 0x00017C7C and
+         * shown frame by frame from 0x00017C85; the logos at the start,
+         * sub_000177E0, 0x00017867 and 0x00017875) play on every PC, each
+         * at its own pace: their frames are not played in step
+         * (rdr_lockstep.c, as a loading screen's), and the first frame
+         * after the movie is, on every PC alike. The others, played from
+         * elsewhere (the title screen's, the front end's), are still left
+         * out. RDR_LS_MOVIES=0: all left out, as before. */
         extern int rdr_lockstep_mode(void);
-        if (rdr_lockstep_mode() == 4 && count >= 1 && count <= 4) {
+        uint32_t from = g32v(g_esp);
+        static int movies = -1;
+        if (movies < 0)
+            movies = !(getenv("RDR_LS_MOVIES") && atoi(getenv("RDR_LS_MOVIES")) == 0);
+        if (rdr_lockstep_mode() == 4 && count >= 1 && count <= 4 && movies
+            && (from == 0x00017C7Cu || from == 0x00017867u)) {
+            fprintf(stderr, "[MOVIE] online: %u movie(s) from %08X, each PC at its own pace\n", count, from);
+            fflush(stderr);
+        } else if (rdr_lockstep_mode() == 4 && count >= 1 && count <= 4) {
             uint32_t slot = g_esp + 8;
-            fprintf(stderr, "[MOVIE] online: %u movie(s) left out (every game the same)\n", count);
+            fprintf(stderr, "[MOVIE] online: %u movie(s) from %08X left out (every game the same)\n", count, from);
             fflush(stderr);
             *(volatile uint32_t *)gm(slot) = 0;
             sub_000705A0_gen();

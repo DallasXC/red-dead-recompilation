@@ -17,6 +17,7 @@ int  xbox_FramebufferWindowIsFullscreen(void);
 void xbox_InputSetRumbleScale(float scale);
 void xbox_VblankSetHz(int hz);
 int rdr_frame_rate_held(void);
+int rdr_lockstep_mode(void);
 }
 
 namespace rdrui {
@@ -117,7 +118,10 @@ bool PageDisplay(RdrSettings *s, bool live)
         s->fps_cap = cap_vals[cap];
         ch = true;
     }
-    if (rdr_frame_rate_held() && (s->fps_cap ? s->fps_cap : 60) > 60)
+    if (rdr_frame_rate_held() && rdr_lockstep_mode() == 4)
+        Note("Held at 60 while playing online: every PC plays the game at the same 60 frames a second. "
+             "Your setting comes back when you play on your own.");
+    else if (rdr_frame_rate_held() && (s->fps_cap ? s->fps_cap : 60) > 60)
         Note("Held at 60 in this chapter (Sunset Canyon): above 60 the stagecoach chase breaks (the coach "
              "is thrown off its track). This is a known issue; your setting comes back when you leave the "
              "chapter.");

@@ -3324,6 +3324,32 @@ the rest of the frame thrown away, and no step at all when the
     the slower one is what the game waits for. RDR_LS_WATCH_AT=<frame>
     (tests) starts a watch there.
 
+245. **Online: 60 frames a second, and the main loop's movies played.** The
+    next session played a whole level through without parting (no DESYNC
+    in the host's log; the three watches were spent in the shop and the
+    menus before the mission, frames 1009-1022). The user: the loading
+    screens' animations and the menu after the level ran fast on the host,
+    whose frame rate is uncapped; the cutscene at the level's end did not
+    play; the other PC's screen went black after the level for good.
+    Every frame is a sixtieth of a second of the game's clock online, so
+    above 60 a PC running on its own (a load, that menu) ran the game
+    fast: online the frame rate is now held at 60 (rdr_level_rate_tick,
+    as the stagecoach chapter's; the Frame rate option says so). The
+    cutscene was left out on purpose (since the users' bridge01.bik
+    parting): the main loop (sub_000179F0) plays a chapter's or a level's
+    movie from 0x00017C7C and shows it frame by frame from 0x00017C85
+    (sub_00083670, the frame's clock), the logos at the start likewise
+    (sub_000177E0: 0x00017867, 0x00017875). Those two now play online,
+    their frames taken as a load's (not in step, each PC at its pace; the
+    first frame after is in step, the clock put level as after a load);
+    movies from elsewhere (the title screen's, 0x00017AA5) are still left
+    out, and the log says which ("from %08X"). Harness: the logos played
+    on both machines of an online pair, which then went on in step
+    through the menus for 7 minutes; a level's end was not reached (the
+    runs end at about 15 minutes). The black screen: not found in the
+    host's log (no wait for the other PC's pads at the end); the other
+    PC's log is needed. RDR_LS_MOVIES=0: every movie left out, as before.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

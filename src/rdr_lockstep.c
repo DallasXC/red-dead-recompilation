@@ -2015,7 +2015,10 @@ void rdr_ls_frame(uint32_t ret)
      * a loading screen's loop (0x00066291, 0x00066509), or the loading
      * screen's own thread (0x0006B7EF, from 0x0006B960: it runs the clock
      * too while the main thread loads) */
-    loading = s_loading > 0 || ret == 0x00066291u || ret == 0x00066509u || ret == 0x0006B7EFu;
+    loading = s_loading > 0 || ret == 0x00066291u || ret == 0x00066509u || ret == 0x0006B7EFu
+              /* a movie's frames (rdr_hooks.c, sub_000705A0): the main
+               * loop's cutscene branch, the logos at the start */
+              || ret == 0x00017C85u || ret == 0x00017875u;
     menu = loading && s_prelevel_menu && ret == 0x00069C15u;
     s_prelevel_menu = 0;
     if (menu)

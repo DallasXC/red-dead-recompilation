@@ -2877,13 +2877,23 @@ void rdr_level_rate_tick(void)
             guest_str(lvl + 0x14, nm, sizeof nm);
         coach = !strcmp(nm, "lvl_coach");
     }
-    if (coach && set_hz > 60) {
+    /* Online: 60 as well. Every frame played in step is a sixtieth of a
+     * second of the game's clock (rdr_lockstep.c), so above 60 the game
+     * ran fast wherever a PC ran on its own: the loading screens'
+     * animations and the menu after a level on a host set to 144 or more
+     * (user: "not playing at the proper speed for the host if the host
+     * has uncapped framerate"). */
+    int online = rdr_lockstep_mode() == 4;
+    if ((coach && set_hz > 60) || (online && set_hz != 60)) {
         if (xbox_VblankHz() != 60)
             xbox_VblankSetHz(60);
         if (!s_rate_held) {
             s_rate_held = 1;
-            fprintf(stderr, "[RATE] the stagecoach chapter: frame rate held at 60 (set to %d; known issue)\n",
-                    set_hz);
+            if (online)
+                fprintf(stderr, "[RATE] online: frame rate held at 60 (set to %d)\n", set_hz);
+            else
+                fprintf(stderr, "[RATE] the stagecoach chapter: frame rate held at 60 (set to %d; known issue)\n",
+                        set_hz);
             fflush(stderr);
         }
     } else if (s_rate_held) {

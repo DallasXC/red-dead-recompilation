@@ -43,6 +43,13 @@ items).
   bound to part at the same place every time: five starts again in a row,
   each with its loading. Now the games are started again once at most for
   the same place, and then carry on as they are (244).
+- **Online: the frame rate is held at 60.** Every PC plays the game at
+  the console's 60 frames a second online; above that, loading screens
+  and the menu after a level ran too fast on the PC set higher (245).
+- **Online: cutscene movies play.** They were left out online, because
+  each PC played them at its own speed and the games fell out of step.
+  Now each PC plays the movie at its own pace and the game waits until
+  everyone is past it (245).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the
