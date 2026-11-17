@@ -1644,7 +1644,7 @@ index db45d05..ea93726 100644
  
  if(MSVC)
 diff --git a/src/kernel/kernel.h b/src/kernel/kernel.h
-index 4a6389d..e63e3dc 100644
+index 4a6389d..492a444 100644
 --- a/src/kernel/kernel.h
 +++ b/src/kernel/kernel.h
 @@ -88,6 +88,9 @@ enum {
@@ -1665,7 +1665,15 @@ index 4a6389d..e63e3dc 100644
  
  /*
   * Which tree a guest path lands in, from the same rule that translates it
-@@ -849,6 +853,7 @@ NTSTATUS __stdcall xbox_NtCreateMutant(PHANDLE MutantHandle, PXBOX_OBJECT_ATTRIB
+@@ -813,6 +817,7 @@ int      xbox_GuestCpuEnterCallback(void);      /* 1 when it took the CPU */
+ void     xbox_GuestCpuLeaveCallback(int took);
+ unsigned long xbox_GuestCpuOwner(void);         /* the holder's tid, 0 when free */
+ int      xbox_GuestCpuWaiting(void);            /* threads queued for it */
++int      xbox_GuestCpuOthersBusy(unsigned *acquires); /* another thread runs or waits */
+ /* Read by RECOMP_BACK_EDGE: a waiter has waited its quantum; the holder
+  * hands over at its next loop back edge. Only ever accessed atomically: a
+  * relaxed load in lifted code (templates/runtime/recomp_types.h), the
+@@ -849,6 +854,7 @@ NTSTATUS __stdcall xbox_NtCreateMutant(PHANDLE MutantHandle, PXBOX_OBJECT_ATTRIB
  NTSTATUS __stdcall xbox_NtReleaseMutant(HANDLE MutantHandle, PLONG PreviousCount);
  
  LONG     __stdcall xbox_KeSetEvent(PVOID Event, LONG Increment, BOOLEAN Wait);
@@ -1673,7 +1681,7 @@ index 4a6389d..e63e3dc 100644
  NTSTATUS __stdcall xbox_KeWaitForSingleObject(PVOID Object, ULONG WaitReason, KPROCESSOR_MODE WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout);
  NTSTATUS __stdcall xbox_KeWaitForMultipleObjects(ULONG Count, PVOID Objects[], ULONG WaitType, ULONG WaitReason, KPROCESSOR_MODE WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout, PVOID WaitBlockArray);
  
-@@ -1222,11 +1227,21 @@ NTSTATUS __stdcall xbox_ExSaveNonVolatileSetting(ULONG ValueIndex, ULONG Type, P
+@@ -1222,11 +1228,21 @@ NTSTATUS __stdcall xbox_ExSaveNonVolatileSetting(ULONG ValueIndex, ULONG Type, P
  #define XC_PARENTAL_CONTROL       XC_P_CONTROL_GAMES
  #define XC_PARENTAL_PASSWORD      XC_P_CONTROL_PASSWORD
  
@@ -2540,7 +2548,7 @@ index 2651871..0b86f86 100644
      }
  }
 diff --git a/src/kernel/kernel_guest_cpu.c b/src/kernel/kernel_guest_cpu.c
-index 299dd69..0084608 100644
+index 299dd69..52cb56c 100644
 --- a/src/kernel/kernel_guest_cpu.c
 +++ b/src/kernel/kernel_guest_cpu.c
 @@ -43,6 +43,9 @@
@@ -2571,7 +2579,15 @@ index 299dd69..0084608 100644
  static int s_granted;
  static unsigned s_next_ticket, s_head, s_waiting;
  static volatile LONG s_owner_tid;
-@@ -108,6 +122,8 @@ static void guest_cpu_config(void)
+@@ -99,6 +113,7 @@ static XBOX_THREAD_LOCAL uint32_t t_soft_where;
+ 
+ /* The window's counters (xbox_GuestCpuReport resets them). */
+ static volatile LONG s_turns, s_releases, s_switches, s_waits, s_preempts;
++static volatile LONG s_acquires;           /* every take of the CPU (xbox_GuestCpuOthersBusy) */
+ static volatile LONG s_max_turn_us, s_max_wait_us;
+ static volatile LONG s_max_turn_kind, s_max_turn_where;
+ static volatile LONG s_trace_lines;
+@@ -108,6 +123,8 @@ static void guest_cpu_config(void)
  {
      const char *e = getenv("RECOMP_GUEST_LOCK");
      const char *t = getenv("RECOMP_GUEST_CPU_TRACE");
@@ -2580,7 +2596,7 @@ index 299dd69..0084608 100644
      const char *q = getenv("RECOMP_GUEST_QUANTUM");
      long qms = q && *q ? strtol(q, NULL, 0) : 4;
  
-@@ -215,21 +231,59 @@ static void turn_ended(uint64_t end_ns, int kind, uint32_t where)
+@@ -215,21 +232,59 @@ static void turn_ended(uint64_t end_ns, int kind, uint32_t where)
   * at once and the holder waits. A joining or handing-over thread (a
   * preemption) queues behind every waiter and asks only past the quantum,
   * the round robin of equal priorities. */
@@ -2642,7 +2658,7 @@ index 299dd69..0084608 100644
              SleepConditionVariableCS(&s_cv, &s_lock, GUEST_CPU_POLL_MS);
              /* Ask the holder to hand over at its next loop back edge
               * (RECOMP_BACK_EDGE) or kernel call: a woken thread at once,
-@@ -241,6 +295,7 @@ static void guest_cpu_acquire(int barge)
+@@ -241,13 +296,16 @@ static void guest_cpu_acquire(int barge)
                  preempt_set(1);
          }
          s_free = 0;
@@ -2650,15 +2666,16 @@ index 299dd69..0084608 100644
          s_granted = 0;
          s_head++;
          s_waiting--;
-@@ -248,6 +303,7 @@ static void guest_cpu_acquire(int barge)
+     }
      InterlockedExchange(&s_owner_tid, (LONG)GetCurrentThreadId());
++    s_acquires++;
      LeaveCriticalSection(&s_lock);
      t_held = 1;
 +    guest_mxcsr_check();
      if (t0) {
          uint64_t now = xbox_HostNowNs();
          InterlockedIncrement(&s_waits);
-@@ -275,6 +331,7 @@ static void guest_cpu_handoff(int kind, uint32_t where)
+@@ -275,6 +333,7 @@ static void guest_cpu_handoff(int kind, uint32_t where)
      EnterCriticalSection(&s_lock);
      preempt_set(0);                     /* the waiter's turn comes now */
      s_free = 1;
@@ -2666,7 +2683,7 @@ index 299dd69..0084608 100644
      InterlockedExchange(&s_owner_tid, 0);
      if (s_waiting) {
          s_granted = 1;
-@@ -296,6 +353,8 @@ static void guest_cpu_soft_release(int kind, uint32_t where, int wake)
+@@ -296,6 +355,8 @@ static void guest_cpu_soft_release(int kind, uint32_t where, int wake)
      t_soft_where = where;
      EnterCriticalSection(&s_lock);
      s_free = 1;
@@ -2675,7 +2692,7 @@ index 299dd69..0084608 100644
      InterlockedExchange(&s_owner_tid, 0);
      if (wake && s_waiting)
          WakeAllConditionVariable(&s_cv);
-@@ -354,6 +413,18 @@ int xbox_GuestCpuRelease(int kind, uint32_t where)
+@@ -354,6 +415,18 @@ int xbox_GuestCpuRelease(int kind, uint32_t where)
  {
      if (!t_held)
          return 0;
@@ -2694,6 +2711,34 @@ index 299dd69..0084608 100644
      if (kind == XBOX_GUEST_CPU_KERNEL) {
          if (where == 258 /* PsTerminateSystemThread: ExitThread, no return */)
              guest_cpu_handoff(XBOX_GUEST_CPU_EXIT, where);
+@@ -450,6 +523,27 @@ int xbox_GuestCpuWaiting(void)
+     return n;
+ }
+ 
++/* For a title that keeps several machines in step: is another guest thread
++ * running or waiting for the CPU? (Called by a thread that has let go of
++ * it.) *acquires: how many times any thread has taken the CPU, so a caller
++ * polling this can tell a quiet spell from a quick kernel call's return. */
++int xbox_GuestCpuOthersBusy(unsigned *acquires)
++{
++    int busy;
++
++    if (!xbox_GuestCpuOn()) {
++        if (acquires)
++            *acquires = 0;
++        return 0;
++    }
++    EnterCriticalSection(&s_lock);
++    busy = !s_free || s_waiting != 0;
++    if (acquires)
++        *acquires = (unsigned)s_acquires;
++    LeaveCriticalSection(&s_lock);
++    return busy;
++}
++
+ void xbox_GuestCpuStatsGet(XboxGuestCpuStats *out, int reset)
+ {
+ #define GC_TAKE(f) (reset ? InterlockedExchange(&(f), 0) : (f))
 diff --git a/src/kernel/kernel_hal.c b/src/kernel/kernel_hal.c
 index 45d548c..840b356 100644
 --- a/src/kernel/kernel_hal.c

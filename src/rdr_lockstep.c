@@ -1729,6 +1729,85 @@ static void ls_thread_hook(int event, uint32_t routine, uint32_t ctx1)
 #endif
 }
 
+/* The game's other threads finish what they can before a frame is counted.
+ *
+ * The user's sessions after 241 and 242 parted the same way three times
+ * more, at a level's start after a cutscene: a stretch of frames where the
+ * game only waits (no random numbers drawn), 3 frames long on the host and
+ * 4 on the other PC, every time; inside it the main thread stood still for
+ * 2 s on the host and over 3 s on the other (the host waited for its pads:
+ * "waiting for player 2's pad"), a turn of 2 s on one guest thread with
+ * another queued for the CPU. Another thread builds something big while
+ * the main loop asks each frame whether it is done; how many frames the
+ * main loop fits in meanwhile is a matter of each PC's speed and of the
+ * scheduler's clock (its quantum, its grace), so one PC saw "done" a frame
+ * later. Online, at each frame's start the main thread now lets go of the
+ * CPU while any other guest thread is running or queued for it, and takes
+ * it back once they have all stopped (waiting on something, or ended):
+ * work another thread was given is finished before the next frame on every
+ * PC alike. Nothing queued (most frames): nothing done. A thread that runs
+ * on and on (one waiting by polling) is let be after 15 s, logged, and not
+ * waited for again for 600 frames. */
+extern int xbox_GuestCpuOthersBusy(unsigned *acquires);
+extern int xbox_GuestCpuWaiting(void);
+static uint32_t s_settle_off_until;
+static unsigned s_settles, s_settle_long;
+
+static void ls_settle_threads(void)
+{
+    extern uint64_t rdr_net_now_ms(void);
+    extern void rdr_net_sleep_ms(int ms);
+    extern int xbox_GuestCpuRelease(int kind, uint32_t where);
+    extern void xbox_GuestCpuAcquire(void);
+    static int off = -1;
+    uint64_t t0, now;
+    unsigned acq = 0, last;
+    int quiet = 0, rel, busy;
+    if (off < 0)
+        off = getenv("RDR_LS_SETTLE") && atoi(getenv("RDR_LS_SETTLE")) == 0;
+    if (off || (s_mode != 4 && !s_hash))
+        return;
+    if (s_lsf < s_settle_off_until || xbox_GuestCpuWaiting() <= 0)
+        return;
+    t0 = rdr_net_now_ms();
+    rel = xbox_GuestCpuRelease(0, 238);         /* handed over, as NtYieldExecution */
+    if (!rel)
+        return;
+    xbox_GuestCpuOthersBusy(&last);
+    for (;;) {
+        rdr_net_sleep_ms(1);
+        busy = xbox_GuestCpuOthersBusy(&acq);
+        now = rdr_net_now_ms();
+        /* still: nobody on the CPU or queued for it, twice running, and
+         * nobody took it in between (a kernel call's quick return) */
+        if (!busy && acq == last) {
+            if (++quiet >= 2)
+                break;
+        } else {
+            quiet = 0;
+        }
+        last = acq;
+        /* a thread that wakes again and again on its own clock (not
+         * working: waiting) is not waited for past 4 ms */
+        if (!busy && now - t0 >= 4)
+            break;
+        if (now - t0 >= 15000) {
+            s_settle_off_until = s_lsf + 600;
+            fprintf(stderr, "[LS] frame %u: another thread of the game ran on for 15 s; not waited for again "
+                    "for 600 frames\n", s_lsf);
+            fflush(stderr);
+            break;
+        }
+    }
+    xbox_GuestCpuAcquire();
+    s_settles++;
+    if (now - t0 >= 50 && s_settle_long++ < 40) {
+        fprintf(stderr, "[LS] frame %u: the game's other threads finished first (%u ms)\n", s_lsf,
+                (unsigned)(now - t0));
+        fflush(stderr);
+    }
+}
+
 void rdr_ls_frame(uint32_t ret)
 {
     t_main_loop = 1;
@@ -1830,6 +1909,7 @@ void rdr_ls_frame(uint32_t ret)
             fprintf(stderr, "[LS] frame %u waited %u ms for a fade%s\n", cur_frame(),
                     (unsigned)(rdr_net_now_ms() - t0), *gm(0x00663338u) ? " (still on: gave up)" : "");
     }
+    ls_settle_threads();
     if (!s_hash && s_mode != 4)
         return;
     f = cur_frame();

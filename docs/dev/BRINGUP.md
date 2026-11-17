@@ -3271,8 +3271,35 @@ the rest of the frame thrown away, and no step at all when the
     the weapons on one machine only. Online, that timer (and the sound
     voice taken when all 60 are busy, sub_002C8020_enter, the oldest by
     the same clock) now reads rdr_ls_game_ns: the frames played in step,
-    a sixtieth of a second each. Harness: the guest stopped for 3.5 s at
-    the level's start (SIGSTOP), as the user's PC was.
+    a sixtieth of a second each. (A harness run with the guest stopped
+    for 3.5 s at the level's start did not get there: the test machine's
+    runs end after about 15 minutes, the time the pair takes to reach a
+    level.)
+
+243. **Online: the main loop counted frames while another thread worked.**
+    The next session (with 242 in) parted twice more, at 1410 and 1500.
+    The first had no weapons in it at all and was the same slip again:
+    after the frame with 22 rand calls (the level's first), 1382-1384 drew
+    nothing on the host and 1382-1385 on the guest. Every one of the
+    user's sessions since 240 has had it there, and always 3 frames on the
+    host against 4 on the guest. Inside the stretch the main thread stood
+    still for about 2 s on the host ("longest turn 1990 ms, longest wait
+    1988 ms": one guest thread held the CPU for 2 s, another was queued)
+    and over 3 s on the guest (the host logged "waiting for player 2's
+    pad" at its second frame each time). The likely shape: a worker thread
+    builds the level's next part while the main loop asks each frame
+    whether it is done, and how many frames the main loop fits in between
+    depends on the PC's speed and on the guest CPU lock's clock (quantum,
+    soft-release grace, 2 ms polls). Not confirmed: which thread and which
+    flag were not found. Change: at each frame's start online
+    (ls_settle_threads), if a guest thread is queued for the CPU the main
+    thread hands it over (as NtYieldExecution) and takes it back only when
+    no guest thread is on the CPU or queued, twice running with no take in
+    between (xbox_GuestCpuOthersBusy, new in the toolkit), or after 4 ms if
+    the CPU is free (a thread waking on its own clock), or after 15 s
+    (then not again for 600 frames). Waits of 50 ms or more are logged
+    ("the game's other threads finished first"), so the next logs show
+    whether it was this. RDR_LS_SETTLE=0 turns it off.
 
 ## Settings, launcher, overlay (src/ui)
 
