@@ -102,8 +102,13 @@ void sub_002C8020_enter(void)
     static int16_t seen_tag[SND_VOICE_COUNT];
     static uint64_t since[SND_VOICE_COUNT];
     static unsigned stolen;
-    uint64_t now = xbox_HostNowNs();
+    extern int rdr_ls_game_ns(uint64_t *t);
+    uint64_t now;
     int i, victim = -1, free_n = 0;
+    /* online: the frames in step (the voice stopped must be the same one
+     * on every machine) */
+    if (!rdr_ls_game_ns(&now))
+        now = xbox_HostNowNs();
     uint64_t oldest = ~0ull;
 
     for (i = 0; i < SND_VOICE_COUNT; i++) {

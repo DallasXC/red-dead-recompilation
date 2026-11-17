@@ -382,6 +382,21 @@ int rdr_ls_ticks_base(uint64_t *t)
     return 1;
 }
 
+/* Time for our own timers that change the game (co-op: a new level's
+ * weapons, the sound voice taken when all are busy). Online that is the
+ * frames played in step, a sixtieth of a second each: the clock on the
+ * wall differs between machines, and a timer read from it fires on a
+ * different frame on each (two games parted that way: the host waited
+ * three seconds for the other's pad, its two seconds were up a frame
+ * after, the other's not). 1 = given; 0 = not online, use the wall. */
+int rdr_ls_game_ns(uint64_t *t)
+{
+    if (!rdr_lockstep_mode())
+        return 0;
+    *t = (uint64_t)s_lsf * 1000000000ull / 60ull;
+    return 1;
+}
+
 /* the tick count's read (rdr_hooks.c, sub_00084880): 1 = given */
 int rdr_ls_ticks(uint64_t *t)
 {

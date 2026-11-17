@@ -6100,11 +6100,17 @@ void rdr_coop_loadouts_clear(void)
 }
 
 /* each co-op player's update (not player 1's) */
+extern int rdr_ls_game_ns(uint64_t *t);
 static void coop_loadout_tick(uint32_t c)
 {
     int k = coop_index(c), mode = rdr_coop_loadout(), i, n = rdr_weapon_count();
     uint32_t p1 = s_coop_p[0];
-    uint64_t now = xbox_HostNowNs();
+    uint64_t now;
+    /* online: the frames in step, so the weapons come on the same frame
+     * on every machine (by the wall, the host's came while it waited for
+     * the other's pad, and the games parted) */
+    if (!rdr_ls_game_ns(&now))
+        now = xbox_HostNowNs();
     if (k < 1 || k > 3 || s_coop_n < 2 || !in_heap(p1) || guest_rd32(0x00652E30u) != 0)
         return;
     if (n > LD_WEAPONS) n = LD_WEAPONS;

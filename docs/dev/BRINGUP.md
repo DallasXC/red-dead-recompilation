@@ -3258,6 +3258,22 @@ the rest of the frame thrown away, and no step at all when the
     creation until the fade has run and its flag is down again (or the
     thread has ended; 10 s at most).
 
+242. **Online: co-op's weapons came by the clock on the wall.** The next
+    two sessions (with 241 in) parted at 1290 and 1230, the same way as
+    241: the guest a frame behind after a stretch of frames with no rand
+    calls at a level's start (1268-1270 on the host, 1268-1271 on the
+    guest). Both times the host had waited over 3 s for the guest's pad
+    (frame 1269, frame 1215: the guest's start-up was slow), and the
+    host's log alone had "player 2: player 1's weapons and money" just
+    after. Story co-op gives player 2 player 1's weapons two seconds into
+    a level (coop_loadout_tick), timed by xbox_HostNowNs: the host's two
+    seconds ran out while it waited, the guest's had not, so player 2 had
+    the weapons on one machine only. Online, that timer (and the sound
+    voice taken when all 60 are busy, sub_002C8020_enter, the oldest by
+    the same clock) now reads rdr_ls_game_ns: the frames played in step,
+    a sixtieth of a second each. Harness: the guest stopped for 3.5 s at
+    the level's start (SIGSTOP), as the user's PC was.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

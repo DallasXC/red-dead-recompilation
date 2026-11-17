@@ -31,6 +31,13 @@ items).
   the fade began counted one more frame than the other, and the games
   parted at the next cutscene. The frame now waits from the moment the
   fade is asked for (241).
+- **Online co-op: player 2's weapons no longer split the games.** Two
+  seconds into a level, story co-op gives player 2 player 1's weapons;
+  those two seconds were measured by each PC's clock, so when one PC
+  waited for the other (a slow load) the weapons came on one PC a frame
+  or more before the other, and the games fell out of step right as the
+  level began. Online they are now counted in game frames, the same on
+  every PC (242).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the
