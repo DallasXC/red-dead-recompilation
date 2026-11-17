@@ -1743,8 +1743,9 @@ void rdr_lineup_pointer(uint32_t page)
     float sx, sy, u, v, fx, fy, L, T, R, B, tx, ty;
     unsigned gen;
 
-    if (!s_lu_poster || !rdr_menu_mode())
-        return;
+    extern int rdr_lockstep_mode(void);
+    if (!s_lu_poster || !rdr_menu_mode() || rdr_lockstep_mode() == 4)
+        return;                             /* online: the pad's alone (every PC alike) */
     {
         static const char want[] = "postermultiview";
         unsigned j;

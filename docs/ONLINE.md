@@ -259,7 +259,6 @@ played into a second run, compared frame by frame:
   where the game puts them on every machine, so every machine draws, and
   plays, the same game.
 
-Still to do: tested only on one machine so far (two copies); no check yet
-that both run the same build (a protocol version only; a different
-build shows as "the games parted"); no way through a router without a
-forwarded port or a VPN.
+Still to do: no way through a router without a forwarded port or a VPN.
+(Each lobby message carries the build: version, compiler and the
+sources' fingerprint, so two PCs on different sources are told so.)

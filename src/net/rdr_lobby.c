@@ -754,18 +754,24 @@ static void launch(void)
  * square roots) is the compiler's, and a last bit apart is enough over a
  * few thousand frames. Told, not refused. */
 extern const char *rdr_version(void);
+/* "1.3.0 clang 19.1 1a2b3c4d": the version, the compiler and the sources'
+ * fingerprint (RDR_SRC_ID, CMakeLists.txt), 32 bytes at most. Two PCs on
+ * different sources fall out of step: the lobby says so. */
+#ifndef RDR_SRC_ID
+#define RDR_SRC_ID "-"
+#endif
 static const char *build_name(void)
 {
-    static char b[32];
+    static char b[33];
     if (!b[0]) {
 #if defined(__clang__)
-        snprintf(b, sizeof b, "%s clang %d.%d", rdr_version(), __clang_major__, __clang_minor__);
+        snprintf(b, sizeof b, "%s clang %d.%d %s", rdr_version(), __clang_major__, __clang_minor__, RDR_SRC_ID);
 #elif defined(_MSC_VER)
-        snprintf(b, sizeof b, "%s MSVC %d", rdr_version(), _MSC_VER);
+        snprintf(b, sizeof b, "%s MSVC %d %s", rdr_version(), _MSC_VER, RDR_SRC_ID);
 #elif defined(__GNUC__)
-        snprintf(b, sizeof b, "%s gcc %d.%d", rdr_version(), __GNUC__, __GNUC_MINOR__);
+        snprintf(b, sizeof b, "%s gcc %d.%d %s", rdr_version(), __GNUC__, __GNUC_MINOR__, RDR_SRC_ID);
 #else
-        snprintf(b, sizeof b, "%s", rdr_version());
+        snprintf(b, sizeof b, "%s %s", rdr_version(), RDR_SRC_ID);
 #endif
     }
     return b;
@@ -901,7 +907,7 @@ static void host_packet(const uint8_t *b, int n, const RdrAddr *from)
                 snprintf(t, sizeof t, "%s's game was built another way (%s; this PC %s)", L.peer[slot].name, gb,
                          build_name());
                 fprintf(stderr, "[LOBBY] %s\n", t);
-                say("%s: online the games may part. Build both PCs the same way.", t);
+                say("%s: the games will fall out of step. Both PCs need the same download, built again.", t);
             }
         }
         crc = crc32_of(L.blob, L.blob_n);
@@ -1261,7 +1267,7 @@ static void *lobby_thread(void *arg)
                         send_to(&L.host, LB_READY, NULL, 0);
                     if (!L.complete && !why)
                         say("Ready: waiting for the host to start%s.",
-                            L.other_build ? " (the host's game was built another way: the games may part online)"
+                            L.other_build ? " (the host's game was built from other sources: both PCs need the same download, built again)"
                                           : NULL);
                     L.complete = 1;
                 } else {

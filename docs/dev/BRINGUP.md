@@ -3367,6 +3367,28 @@ the rest of the frame thrown away, and no step at all when the
     (the title screen's movie, left out, does not start it), so the wait
     itself is untested.
 
+247. **Online: the pointer chose on one PC only; builds told apart.** The
+    next session: "one option off" in the menus before the mission (the
+    host's game started, the other's did not), the guest "moving on their
+    own", and the level's start parted again. The host's game had been
+    built before 246 arrived (its exe 20:14 UTC, 246 after 20:25; the
+    other PC's log has "waited 16 ms for the movie call's thread", the
+    host's has not): the two ran different code, which no lobby check
+    could see (both "1.3.0 clang 19.1"). The lobby's build name now ends
+    with the sources' fingerprint (RDR_SRC_ID: SHA-1 of src and patches,
+    line ends left out, at configure time, which build.ps1 runs each
+    build; defined on rdr_lobby.c alone so a change does not rebuild the
+    generated C), and a difference says the games will fall out of step.
+    The menu: the mouse set the choice itself (swf_set_int curMenSel on
+    "Start / Weapon Selection / Shop"; set_focus on the front end's pages;
+    the journal; the showdown line-up's hand), on that PC alone, while
+    the pad's presses go to every PC. Online the pointer now only presses
+    (up, down, A: a click on another line steps there, then A) on the
+    menu before a mission; on the front end's pages, the options' rows
+    and the line-up it does nothing; the journal's list follows the pad.
+    "Moving on their own": not found; after a parting each PC moves the
+    other's character its own way, which looks like that.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

@@ -55,6 +55,13 @@ items).
   game waits for it before play begins; on a slower PC it finished a frame
   later and the games fell out of step. Now no frame is played until it
   is done, on every PC alike (246).
+- **Online: the menus before a mission stay the same on both PCs.** The
+  mouse picked a line on its own PC only, so one player could start the
+  mission while the other's game sat on another line. Online the mouse
+  now only presses the buttons, which reach both PCs (247).
+- **Online: the lobby tells when the two PCs are not on the same
+  build.** Two PCs built from different sources fall out of step; the
+  lobby now says so plainly (247).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the

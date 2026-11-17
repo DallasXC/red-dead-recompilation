@@ -876,6 +876,12 @@ static void menu_pointer(uint32_t page, const PageCal *cal)
     int hit = -1, buttons = 0;
     static int dbg = -1;
 
+    /* Online: a page's choice is the pad's alone, the same on every PC
+     * (the pointer set it on this PC only: "one option off") */
+    if (rdr_lockstep_mode() == 4) {
+        rdr_input_pointer_page(0);
+        return;
+    }
     if (n == 0 || n > 64)
         return;
     if (!rdr_input_pointer(&px, &py, &u, &v, &gen))
@@ -1216,6 +1222,12 @@ static void hud_scan(uint32_t page, const PageCal *cal)
     int any = 0, hit = 0, hit_arrow = 0, desk = 0;     /* desk: 1 book, 2 poster, 3 journal in front */
     static int dbg = -1;
 
+    /* Online: a page's choice is the pad's alone, the same on every PC
+     * (the pointer set it on this PC only: "one option off") */
+    if (rdr_lockstep_mode() == 4) {
+        rdr_input_pointer_page(0);
+        return;
+    }
     if (n == 0 || n > 96 || !rdr_menu_mode())
         return;
     if (!rdr_input_pointer(&px, &py, &u, &v, &gen))
@@ -1382,6 +1394,12 @@ static void option_rows(uint32_t page)
     static int was_down;
     int down = xbox_FramebufferKeyDown(0x01);
 
+    /* Online: a page's choice is the pad's alone, the same on every PC
+     * (the pointer set it on this PC only: "one option off") */
+    if (rdr_lockstep_mode() == 4) {
+        rdr_input_pointer_page(0);
+        return;
+    }
     if (n == 0 || n > 96 || !rdr_input_pointer(&px, &py, &u, &v, &gen))
         return;
     for (i = 0; i < n; i++) {
@@ -7701,8 +7719,11 @@ static void journal_swf(uint32_t menu, const char *name, float u, float v, unsig
         list_ns = now;
         if (gen != seen_gen || click || menu != seen_menu) {
             over = journal_entry(menu, name, fx, fy);
-            if (over >= 0 && cur != over)
+            /* online: the choice is the pad's alone (every PC alike) */
+            if (over >= 0 && cur != over && rdr_lockstep_mode() != 4)
                 swf_set_int(menu, "curMenSel", over);
+            if (rdr_lockstep_mode() == 4 && over != cur)
+                over = -1;
         }
         seen_gen = gen;
         seen_menu = menu;
@@ -7820,18 +7841,40 @@ void rdr_swf_menu(uint32_t menu)
         /* Before a mission: Start / Weapon Selection / Shop (curMenSel
          * 0-2) and "A OK". */
         static unsigned seen_gen;
+        static int target4 = -1;
         int over = -1;
+        int32_t cur = -1;
+        /* Online the pointer only presses buttons (up, down, A), which go
+         * to every PC with the pad: it set the choice itself, on this PC
+         * alone, so a guest whose mouse rested on another line had a
+         * different line chosen (user: "one option off", the host's game
+         * started and the other's did not). */
+        int online = rdr_lockstep_mode() == 4;
         for (i = 0; i < 3; i++)
             if (px >= 130 && px <= 440 && py >= 159.0f + 33.6f * (float)i - 16.0f
                 && py < 159.0f + 33.6f * (float)i + 16.0f)
                 over = (int)i;
-        if (over >= 0 && (gen != seen_gen || (down && !was_down))) {
-            int32_t cur = -1;
-            if (swf_get_int(menu, "curMenSel", &cur) && cur != over)
+        swf_get_int(menu, "curMenSel", &cur);
+        if (!online && over >= 0 && (gen != seen_gen || (down && !was_down))) {
+            if (cur >= 0 && cur != over)
                 swf_set_int(menu, "curMenSel", over);
         }
         seen_gen = gen;
-        if (down && !was_down && (over >= 0 || (py >= 365 && py <= 405 && px >= 50 && px <= 160)))
+        if (online) {
+            if (down && !was_down && over >= 0 && cur >= 0 && cur <= 2 && cur != over)
+                target4 = over;             /* stepped there, then A */
+            else if (down && !was_down && (over >= 0 || (py >= 365 && py <= 405 && px >= 50 && px <= 160)))
+                rdr_input_swf_press(RDR_HUD_A);
+            if (target4 >= 0 && !rdr_input_swf_busy()) {
+                if (cur < 0 || cur > 2)
+                    target4 = -1;
+                else if (cur == target4) {
+                    rdr_input_swf_press(RDR_HUD_A);
+                    target4 = -1;
+                } else
+                    rdr_input_swf_press(cur < target4 ? RDR_HUD_DOWN : RDR_HUD_UP);
+            }
+        } else if (down && !was_down && (over >= 0 || (py >= 365 && py <= 405 && px >= 50 && px <= 160)))
             rdr_input_swf_press(RDR_HUD_A);
         was_down = down;
         rdr_input_pointer_page(0);

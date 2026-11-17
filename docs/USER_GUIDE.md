@@ -453,11 +453,16 @@ picture is sharp and there is no video lag.
    - **The menus (by hand)**: the host's controller works the menus, as
      on one PC; pick a chapter and play.
 
-   Online games leave out the game's movies (the pre-rendered cutscenes):
-   they play at each PC's own speed, which parted the games. The menus
-   before a mission (weapon select, the shop and Start / Weapon
+   Online, the movies between chapters and levels play on every PC, each
+   at its own pace, and the games go on together once all have finished;
+   a few others (the title screen's, a level's opening) are left out. The
+   menus before a mission (weapon select, the shop and Start / Weapon
    Selection / Shop) work as usual: the host's controller (player 1)
-   buys and chooses, and every PC sees the same. Each player is a player in Story Co-op, on
+   buys and chooses, and every PC sees the same. The mouse works them by
+   pressing the buttons (a click on another line steps there); hovering
+   picks nothing online. The lobby says when two PCs are not on the same
+   build: both need the same download, built again, or the games fall
+   out of step. Each player is a player in Story Co-op, on
    their own controller (or keyboard and mouse).
 
 **Showdown online**: after the start, go to Showdown on the desk as

@@ -121,6 +121,31 @@ file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" RDR_VERSION LIMIT_COUNT 1)
 string(STRIP "${RDR_VERSION}" RDR_VERSION)
 target_compile_definitions(${PROJECT_NAME} PRIVATE RDR_VERSION="${RDR_VERSION}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+# The sources' fingerprint (RDR_SRC_ID, 8 hex digits): online, each PC's
+# lobby says which build it runs, and two PCs built from different sources
+# fall out of step (one user's host was a fix behind its guest). Taken at
+# configure time, which build.ps1 runs on every build; line ends do not
+# count (a download from GitHub and a copy from here differ only there).
+file(GLOB_RECURSE RDR_SRC_FILES LIST_DIRECTORIES false
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/patches/*.patch")
+list(FILTER RDR_SRC_FILES EXCLUDE REGEX "/src/recomp/gen/")
+list(SORT RDR_SRC_FILES)
+set(RDR_SRC_CAT "")
+foreach(f IN LISTS RDR_SRC_FILES)
+    file(READ "${f}" RDR_SRC_ONE)
+    string(REPLACE "\r" "" RDR_SRC_ONE "${RDR_SRC_ONE}")
+    string(SHA1 RDR_SRC_H "${RDR_SRC_ONE}")
+    file(RELATIVE_PATH RDR_SRC_REL "${CMAKE_CURRENT_SOURCE_DIR}" "${f}")
+    string(APPEND RDR_SRC_CAT "${RDR_SRC_REL} ${RDR_SRC_H}\n")
+endforeach()
+string(SHA1 RDR_SRC_ID "${RDR_SRC_CAT}")
+string(SUBSTRING "${RDR_SRC_ID}" 0 8 RDR_SRC_ID)
+# (on the lobby's file alone: on the whole target, every source change
+# would rebuild all of the generated C)
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/net/rdr_lobby.c" APPEND PROPERTY
+             COMPILE_DEFINITIONS RDR_SRC_ID="${RDR_SRC_ID}")
+message(STATUS "Sources' fingerprint: ${RDR_SRC_ID}")
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/recomp
