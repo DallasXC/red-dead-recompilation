@@ -1722,9 +1722,37 @@ static void ls_net_frame(uint32_t frame, uint32_t hash)
  * cut to a cutscene, parted by 1710). Toolkit: g_xbox_thread_hook. */
 #define LS_FADE_CTX 0x00106720u
 static volatile int s_fade_pending;
+/* The thread a movie call starts (sub_0006FE00, its data at 0x0058D3C0),
+ * even with no movie: at a level's start the main loop waits for what it
+ * leaves (0x0058D27C-0x0058D488, [0x0065A80C]), and the frame it ended in
+ * was each PC's own: the watch (244) saw it start in frame 1390 and end in
+ * 1391 on the host, the flags clear in 1393 and the game go on in 1394,
+ * a frame later on the other PC. Lockstep: no frame while it runs (246). */
+#define LS_MOVIE_CTX 0x0006FE00u
+static volatile int s_movie_pending;
+
+static void ls_count(volatile int *n, int event)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    if (event == 1)
+        InterlockedIncrement((volatile LONG *)n);
+    else if (event == 2 && *n > 0)
+        InterlockedDecrement((volatile LONG *)n);
+#else
+    if (event == 1)
+        __atomic_add_fetch(n, 1, __ATOMIC_SEQ_CST);
+    else if (event == 2 && *n > 0)
+        __atomic_sub_fetch(n, 1, __ATOMIC_SEQ_CST);
+#endif
+}
+
 static void ls_thread_hook(int event, uint32_t routine, uint32_t ctx1)
 {
     (void)routine;
+    if (ctx1 == LS_MOVIE_CTX) {
+        ls_count(&s_movie_pending, event);
+        return;
+    }
     if (ctx1 != LS_FADE_CTX)
         return;
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1843,6 +1871,14 @@ static const struct { uint32_t lo, hi; } s_watch_rng[] = {
 };
 static uint8_t *s_watch_buf;
 static int s_watch_on, s_watch_frames, s_watch_count;
+static volatile int s_watch_armed;
+
+/* rdr_hooks.c, a movie left out online (a level's start): the next stretch
+ * is watched even if the shop's used the watches up */
+void rdr_ls_watch_arm(void)
+{
+    s_watch_armed = 1;
+}
 
 static uint32_t rand_count(uint32_t f)
 {
@@ -1961,8 +1997,10 @@ static void ls_watch_frame(void)
         static long at = -2;            /* (tests: RDR_LS_WATCH_AT=<frame> watches from there) */
         if (at == -2)
             at = getenv("RDR_LS_WATCH_AT") ? atol(getenv("RDR_LS_WATCH_AT")) : -1;
-        if (s_watch_count >= LSW_N || ((long)f != at && (rand_count(f - 1) != 0 || rand_count(f - 2) < 15)))
+        if ((s_watch_count >= LSW_N && !s_watch_armed)
+            || ((long)f != at && (rand_count(f - 1) != 0 || rand_count(f - 2) < 15)))
             return;
+        s_watch_armed = 0;
         if (!s_watch_buf && !(s_watch_buf = (uint8_t *)malloc(watch_size())))
             off = 1;
         if (!off && !(s_watch_cnt = (uint8_t *)calloc(watch_size() / 4, 1)))
@@ -2100,6 +2138,31 @@ void rdr_ls_frame(uint32_t ret)
         if (waited && s_hash)
             fprintf(stderr, "[LS] frame %u waited %u ms for a fade%s\n", cur_frame(),
                     (unsigned)(rdr_net_now_ms() - t0), *gm(0x00663338u) ? " (still on: gave up)" : "");
+        /* the movie call's thread (LS_MOVIE_CTX): ended before the frame */
+        t0 = 0;
+        while (s_movie_pending > 0) {
+            extern void rdr_net_sleep_ms(int ms);
+            extern int xbox_GuestCpuRelease(int kind, uint32_t where);
+            extern void xbox_GuestCpuAcquire(void);
+            int rel;
+            if (!t0)
+                t0 = rdr_net_now_ms();
+            if (rdr_net_now_ms() - t0 > 10000) {
+                fprintf(stderr, "[LS] frame %u: the movie call's thread still running after 10 s; went on\n",
+                        cur_frame());
+                s_movie_pending = 0;
+                break;
+            }
+            rel = xbox_GuestCpuRelease(0, 238);
+            rdr_net_sleep_ms(1);
+            if (rel)
+                xbox_GuestCpuAcquire();
+        }
+        if (t0) {
+            fprintf(stderr, "[LS] frame %u waited %u ms for the movie call's thread\n", cur_frame(),
+                    (unsigned)(rdr_net_now_ms() - t0));
+            fflush(stderr);
+        }
     }
     ls_settle_threads();
     if (s_mode == 4)

@@ -3350,6 +3350,23 @@ the rest of the frame thrown away, and no step at all when the
     host's log (no wait for the other PC's pads at the end); the other
     PC's log is needed. RDR_LS_MOVIES=0: every movie left out, as before.
 
+246. **Online: the movie call's thread.** The next session parted at the
+    level's start again (1410 and 1260), and this time the host's watch
+    caught the stretch (the other PC's three were spent in the shop: a
+    left-out movie now re-arms it, rdr_ls_watch_arm). The level's intro
+    movie is left out (from 0x000701F5); the call still starts a thread
+    (sub_0006FE00, its data at 0x0058D3C0), in frame 1390 on the host,
+    ended in 1391; the frames 1390-1393 drew nothing; in 1393 alone the
+    movie data's flags went 01 to 00 (0x0058D27C-0x0058D308, 0x0058D488),
+    [0x0065A80C] went from 0x0058D3C0 to 0x00425B30, 0x00663EF0 and
+    0x00663F60 from 2 to 3; 1394 drew 7. The frame that thread ended in
+    was each PC's own (as the fade's, 241). Now no frame is counted while
+    it runs (s_movie_pending, ls_thread_hook, 10 s at most; the wait is
+    logged: "waited N ms for the movie call's thread"). Harness: an
+    online pair for 8 minutes, in step; the thread was not started there
+    (the title screen's movie, left out, does not start it), so the wait
+    itself is untested.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

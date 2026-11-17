@@ -682,6 +682,8 @@ void sub_000705A0(void)
             fflush(stderr);
         } else if (rdr_lockstep_mode() == 4 && count >= 1 && count <= 4) {
             uint32_t slot = g_esp + 8;
+            extern void rdr_ls_watch_arm(void);
+            rdr_ls_watch_arm();
             fprintf(stderr, "[MOVIE] online: %u movie(s) from %08X left out (every game the same)\n", count, from);
             fflush(stderr);
             *(volatile uint32_t *)gm(slot) = 0;

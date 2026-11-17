@@ -50,6 +50,11 @@ items).
   each PC played them at its own speed and the games fell out of step.
   Now each PC plays the movie at its own pace and the game waits until
   everyone is past it (245).
+- **Online: the level's start, again.** A level's opening movie, even
+  when left out, starts a short piece of work in the background, and the
+  game waits for it before play begins; on a slower PC it finished a frame
+  later and the games fell out of step. Now no frame is played until it
+  is done, on every PC alike (246).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the
