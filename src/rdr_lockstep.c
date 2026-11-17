@@ -727,6 +727,17 @@ static void lsn_hash_check(uint32_t f, uint32_t ours, uint32_t theirs)
         /* The host decides (it sees every machine's fingerprint, so it
          * sees every parting): all start again together on its save. */
         if (s_host) {
+            /* Started again already, and parted again within a minute of
+             * the start: the start again puts every game at the same place
+             * as before, so it would part there again, and again (the
+             * user: five starts again in a row, each a minute of loading,
+             * "completely unplayable"). The games carry on instead, as
+             * before 231. */
+            if (s_resyncs > 0 && f < 3600u) {
+                fprintf(stderr, "[LS] parted again soon after starting again: not again (it would part at the "
+                        "same place); the games carry on\n");
+                s_resync_max = s_resyncs;
+            }
             if (s_resyncs < s_resync_max) {
                 s_rs_want = 1;
                 fprintf(stderr, "[LS] starting again together (%d of at most %d)\n", s_resyncs + 1, s_resync_max);
@@ -1747,7 +1758,13 @@ static void ls_thread_hook(int event, uint32_t routine, uint32_t ctx1)
  * work another thread was given is finished before the next frame on every
  * PC alike. Nothing queued (most frames): nothing done. A thread that runs
  * on and on (one waiting by polling) is let be after 15 s, logged, and not
- * waited for again for 600 frames. */
+ * waited for again for 600 frames.
+ *
+ * Off since: the user's next session (243) waited 60-440 ms a frame in
+ * the shop and the menus before the mission (a thread of theirs runs
+ * there all along), unplayable, and the level's start parted all the same
+ * (no wait was logged inside the stretch: nothing was queued at those
+ * frames' starts). RDR_LS_SETTLE=1 (tests) turns it on. */
 extern int xbox_GuestCpuOthersBusy(unsigned *acquires);
 extern int xbox_GuestCpuWaiting(void);
 static uint32_t s_settle_off_until;
@@ -1764,7 +1781,7 @@ static void ls_settle_threads(void)
     unsigned acq = 0, last;
     int quiet = 0, rel, busy;
     if (off < 0)
-        off = getenv("RDR_LS_SETTLE") && atoi(getenv("RDR_LS_SETTLE")) == 0;
+        off = !(getenv("RDR_LS_SETTLE") && atoi(getenv("RDR_LS_SETTLE")) > 0);
     if (off || (s_mode != 4 && !s_hash))
         return;
     if (s_lsf < s_settle_off_until || xbox_GuestCpuWaiting() <= 0)
@@ -1806,6 +1823,178 @@ static void ls_settle_threads(void)
                 (unsigned)(now - t0));
         fflush(stderr);
     }
+}
+
+/* What changes while the game waits (tests and logs).
+ *
+ * Every parting since 240 came at a level's start: after the frame with
+ * the level's first random numbers, a few frames with none (the game
+ * waiting for something), 3 on the host and 4 on the other PC each time.
+ * What it waits for is not known. When a frame draws no random number
+ * after one that drew 15 or more (the level's first drew 22), the game's
+ * data (0x00380000-0x00700000) and heap (0x80000000-0x84000000) are
+ * copied at each frame's start, up to and including the first frame that
+ * draws again (10 frames at most, 3 times a session), and the words that
+ * changed in one waiting frame alone are logged (address, old, new). On two PCs' logs the word that changes a
+ * frame later on one is what the game waited for. RDR_LS_WATCH=0: off. */
+#define LSW_N 3
+static const struct { uint32_t lo, hi; } s_watch_rng[] = {
+    { 0x00380000u, 0x00700000u }, { 0x80000000u, 0x84000000u }
+};
+static uint8_t *s_watch_buf;
+static int s_watch_on, s_watch_frames, s_watch_count;
+
+static uint32_t rand_count(uint32_t f)
+{
+    return s_rand[f % LS_DETAIL_N].f == f ? s_rand[f % LS_DETAIL_N].n : 0;
+}
+
+static size_t watch_size(void)
+{
+    size_t n = 0, i;
+    for (i = 0; i < sizeof s_watch_rng / sizeof s_watch_rng[0]; i++)
+        n += s_watch_rng[i].hi - s_watch_rng[i].lo;
+    return n;
+}
+
+static void watch_take(void)
+{
+    size_t i, o = 0;
+    for (i = 0; i < sizeof s_watch_rng / sizeof s_watch_rng[0]; i++) {
+        size_t n = s_watch_rng[i].hi - s_watch_rng[i].lo;
+        memcpy(s_watch_buf + o, gm(s_watch_rng[i].lo), n);
+        o += n;
+    }
+}
+
+/* Each frame's changes are counted per word; a word's first change is
+ * kept (where, which frame, old, new). At the end only the words that
+ * changed in one waiting frame alone are shown: the screen's buffers and
+ * the like change every frame and are left out. */
+#define LSW_FIRSTS 200000
+static uint8_t *s_watch_cnt;
+static struct { uint32_t va, was, now, f; } *s_watch_first;
+static unsigned s_watch_nfirst;
+
+static void watch_diff(uint32_t f, int waiting)
+{
+    size_t i, o = 0;
+    unsigned total = 0;
+    for (i = 0; i < sizeof s_watch_rng / sizeof s_watch_rng[0]; i++) {
+        uint32_t lo = s_watch_rng[i].lo, n = s_watch_rng[i].hi - lo, a;
+        const uint8_t *cur = gm(lo);
+        for (a = 0; a < n; a += 4) {
+            uint32_t was, now;
+            size_t w = (o + a) / 4;
+            memcpy(&was, s_watch_buf + o + a, 4);
+            memcpy(&now, cur + a, 4);
+            if (was == now)
+                continue;
+            total++;
+            if (!waiting)
+                continue;
+            if (s_watch_cnt[w] == 0 && s_watch_nfirst < LSW_FIRSTS) {
+                s_watch_first[s_watch_nfirst].va = lo + a;
+                s_watch_first[s_watch_nfirst].was = was;
+                s_watch_first[s_watch_nfirst].now = now;
+                s_watch_first[s_watch_nfirst].f = f;
+                s_watch_nfirst++;
+            }
+            if (s_watch_cnt[w] < 255)
+                s_watch_cnt[w]++;
+        }
+        o += n;
+    }
+    fprintf(stderr, "[LS] watch: frame %u (%u random numbers): %u words changed\n", f, (unsigned)rand_count(f), total);
+}
+
+static size_t watch_word(uint32_t va)
+{
+    return (va >= 0x80000000u ? (size_t)(s_watch_rng[0].hi - s_watch_rng[0].lo) + (va - 0x80000000u)
+                              : (size_t)(va - s_watch_rng[0].lo)) / 4;
+}
+
+/* the last waiting frame first (what changed just before the game went
+ * on), 150 words a frame at most */
+static void watch_report(void)
+{
+    unsigned k, total = 0;
+    uint32_t f = 0xFFFFFFFFu;
+    for (;;) {
+        uint32_t next = 0;
+        unsigned shown = 0, n = 0;
+        int any = 0;
+        for (k = 0; k < s_watch_nfirst; k++)
+            if (s_watch_first[k].f < f && s_watch_first[k].f >= next) {
+                next = s_watch_first[k].f;
+                any = 1;
+            }
+        if (!any)
+            break;
+        f = next;
+        for (k = 0; k < s_watch_nfirst; k++) {
+            if (s_watch_first[k].f != f || s_watch_cnt[watch_word(s_watch_first[k].va)] != 1)
+                continue;
+            if (!n++)
+                fprintf(stderr, "[LS] watch: changed in frame %u alone:\n", f);
+            if (shown++ < 150)
+                fprintf(stderr, "[LS]   %08X %08X -> %08X\n", s_watch_first[k].va, s_watch_first[k].was,
+                        s_watch_first[k].now);
+        }
+        if (n > 150)
+            fprintf(stderr, "[LS]   (and %u more)\n", n - 150);
+        total += n;
+    }
+    fprintf(stderr, "[LS] watch: done (%u words changed in one waiting frame alone)\n", total);
+    fflush(stderr);
+}
+
+static void ls_watch_frame(void)
+{
+    static int off = -1;
+    uint32_t f = s_lsf;                 /* frame f starts; f - 1 has ended */
+    if (off < 0)
+        off = getenv("RDR_LS_WATCH") && atoi(getenv("RDR_LS_WATCH")) == 0;
+    if (off || f < 3)
+        return;
+    if (!s_watch_on) {
+        static long at = -2;            /* (tests: RDR_LS_WATCH_AT=<frame> watches from there) */
+        if (at == -2)
+            at = getenv("RDR_LS_WATCH_AT") ? atol(getenv("RDR_LS_WATCH_AT")) : -1;
+        if (s_watch_count >= LSW_N || ((long)f != at && (rand_count(f - 1) != 0 || rand_count(f - 2) < 15)))
+            return;
+        if (!s_watch_buf && !(s_watch_buf = (uint8_t *)malloc(watch_size())))
+            off = 1;
+        if (!off && !(s_watch_cnt = (uint8_t *)calloc(watch_size() / 4, 1)))
+            off = 1;
+        if (!off && !(s_watch_first = malloc(LSW_FIRSTS * sizeof *s_watch_first)))
+            off = 1;
+        if (off) {
+            free(s_watch_buf); free(s_watch_cnt); free(s_watch_first);
+            s_watch_buf = NULL; s_watch_cnt = NULL; s_watch_first = NULL;
+            return;
+        }
+        s_watch_nfirst = 0;
+        s_watch_on = 1;
+        s_watch_frames = 0;
+        s_watch_count++;
+        fprintf(stderr, "[LS] watch: frame %u drew no random numbers after %u in frame %u; watching\n", f - 1,
+                (unsigned)rand_count(f - 2), f - 2);
+        watch_take();
+        return;
+    }
+    {
+        int waiting = rand_count(f - 1) == 0;
+        watch_diff(f - 1, waiting);
+        if (!waiting || ++s_watch_frames >= 10) {
+            s_watch_on = 0;
+            watch_report();
+            free(s_watch_buf); free(s_watch_cnt); free(s_watch_first);
+            s_watch_buf = NULL; s_watch_cnt = NULL; s_watch_first = NULL;
+            return;
+        }
+    }
+    watch_take();
 }
 
 void rdr_ls_frame(uint32_t ret)
@@ -1910,6 +2099,8 @@ void rdr_ls_frame(uint32_t ret)
                     (unsigned)(rdr_net_now_ms() - t0), *gm(0x00663338u) ? " (still on: gave up)" : "");
     }
     ls_settle_threads();
+    if (s_mode == 4)
+        ls_watch_frame();
     if (!s_hash && s_mode != 4)
         return;
     f = cur_frame();

@@ -3301,6 +3301,29 @@ the rest of the frame thrown away, and no step at all when the
     ("the game's other threads finished first"), so the next logs show
     whether it was this. RDR_LS_SETTLE=0 turns it off.
 
+244. **243 undone; no more starting again in a loop; a watch on the
+    stretch.** The next session (with 243): every frame of the shop and
+    the menus before the mission waited 60-440 ms (a thread of the game's
+    runs there all along, so something was always queued), unplayable;
+    and the level's start parted as before (no wait logged inside the
+    stretch: nothing was queued at those frames' starts, so 243's model
+    was wrong or incomplete). Host 1186-1188 empty, the other PC
+    1186-1189, again 3 against 4. ls_settle_threads is now off unless
+    RDR_LS_SETTLE=1. And each parting restarted the chapter, which parted
+    at the same place again, five times over; a session that parts within
+    3600 frames of a start again is no longer started again (the games
+    carry on, as before 231). For the cause: ls_watch_frame. After a
+    frame with 15 or more rand calls and one with none (the level's first
+    frame, then the stretch), the game's data (0x00380000-0x00700000) and
+    heap (0x80000000-0x84000000) are copied at each frame's start until a
+    frame draws again (10 frames, 3 times a session), and the words that
+    changed in one waiting frame alone are logged ("[LS] watch:", 400 at
+    most; in the harness's menus 16,000-21,000 words changed every frame,
+    the screen's buffers mostly, so all of them would bury it).
+    Compared across two PCs' logs, the word that changes a frame later on
+    the slower one is what the game waits for. RDR_LS_WATCH_AT=<frame>
+    (tests) starts a watch there.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

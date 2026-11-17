@@ -38,12 +38,11 @@ items).
   or more before the other, and the games fell out of step right as the
   level began. Online they are now counted in game frames, the same on
   every PC (242).
-- **Online: the game's background work finishes before each frame.**
-  While a level starts, another part of the game builds what comes next
-  and the game checks each frame whether it is done; a slower PC seems to
-  fit one more frame in before it is, and the games fell out of step just
-  after the level began. Online, each frame now first lets that work
-  finish, on every PC alike (243).
+- **Online: no more starting again over and over.** When the games
+  parted again within a minute of starting again together, they were
+  bound to part at the same place every time: five starts again in a row,
+  each with its loading. Now the games are started again once at most for
+  the same place, and then carry on as they are (244).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the
