@@ -514,12 +514,22 @@ static int player_port(uint32_t player)
     return (int)((pad - 0x006795C8u) / 0xB0u);
 }
 
+extern int rdr_ls_step_frame(uint32_t *f);
 static void mouse_look_net(uint32_t cont, uint32_t player)
 {
     int port = player_port(player), me = rdr_ls_my_port();
-    uint32_t frame = guest_rd32(RDR_FRAME_COUNT);
+    uint32_t frame;
     LookNet *L;
     volatile float *ax, *ay;
+    /* The frame played in step, not the game's frame count: that counts
+     * each PC's loading frames too (at a level's start 2074 on one PC,
+     * 2123 on the other), so the windows below (30 and 600 frames) ended
+     * on different frames on each, and the mouse turned player 2's camera
+     * on one PC only (the user's games parted three frames into the
+     * level, player 2 turning on the guest and still on the host: "the
+     * client is moving on their own"). Not in a PC's own frames (a load). */
+    if (rdr_ls_step_frame(&frame) != 1)
+        return;
     if (port < 0)
         return;
     L = &s_look_net[port];

@@ -3389,6 +3389,29 @@ the rest of the frame thrown away, and no step at all when the
     "Moving on their own": not found; after a parting each PC moves the
     other's character its own way, which looks like that.
 
+248. **Online: the mouse look's windows counted the game's frames.** The
+    next sessions (both PCs on the same build, the lobby silent) parted at
+    1350, 11910 and 1440, each a few frames into a level. 246 worked: the
+    stretch was the same on both now (1430-1432 empty, 1433 drew 7, the
+    words of 1431 and 1432 alike on both PCs' watches). The parting came
+    after: in 1433, the first frame of play, player 2 began turning on the
+    guest (-12.8988 to -12.9021, -12.9061, -12.9087: a wobble, a turn on
+    the spot) and stood still on the host, with the same random numbers.
+    The guest plays with the keyboard and mouse. mouse_look_net (online,
+    every player's camera from the pads' mouse counts) kept its windows
+    (30 frames "the stick's" after the camera stopped answering, 600 until
+    it is tried again) in the game's frame count, [0x0065AA98], which
+    counts each PC's loading frames too: 2074 on the host and 2123 on the
+    guest at that frame. So the window ran out on one PC and not the
+    other, and the mouse turned player 2 on one only ("the client is
+    moving on their own"). It now counts the frames played in step
+    (rdr_ls_step_frame), and does nothing in a PC's own frames (a load, a
+    movie). The dump also shows each port's pad as the game read it
+    ("pads: 1:buttons lx,ly rx,ry m(mouse)"), so a parting from the
+    inputs can be told from one from the game. Harness: an online pair
+    with a parting forced (RDR_LS_SIM_DESYNC=150) dumps the pads; the
+    level's start was not reached.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

@@ -62,6 +62,11 @@ items).
 - **Online: the lobby tells when the two PCs are not on the same
   build.** Two PCs built from different sources fall out of step; the
   lobby now says so plainly (247).
+- **Online: the mouse no longer turns a player on one PC only.** With
+  keyboard and mouse, a few frames into a level, the mouse could turn a
+  player's camera on that player's PC but not on the others, so the
+  player seemed to move by themselves and the games fell out of step.
+  Each PC now handles the mouse on the same frames (248).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the

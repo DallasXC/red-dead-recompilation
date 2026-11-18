@@ -162,6 +162,19 @@ int rdr_lockstep_mode(void)
 static uint32_t s_lsf;
 static uint32_t cur_frame(void) { return s_lsf; }
 
+/* Online: the frame being played in step (1), or a PC's own frame (a load,
+ * a movie: 0). For our own per-frame state (rdr_overrides.c's mouse look):
+ * the game's frame count ([0x0065AA98]) counts every PC's loading frames
+ * too, so it differs between PCs. */
+static int s_frame_in_step;
+int rdr_ls_step_frame(uint32_t *f)
+{
+    if (rdr_lockstep_mode() != 4)
+        return 0;
+    *f = s_lsf;
+    return s_frame_in_step ? 1 : -1;
+}
+
 static int port_of(uint32_t h)
 {
     int p;
@@ -645,6 +658,8 @@ int rdr_ls_status(char *buf, int n)
  * or health, the number of players), and the game's own frame count and
  * clock. */
 #define LS_DETAIL_N 128
+/* each port's pad as the game had it, a frame's first read (the dump) */
+static struct { uint32_t f; uint8_t had; uint8_t pad[4][LSN_PAD]; } s_pad_seen[LS_DETAIL_N];
 typedef struct {
     uint32_t f, game_frame, rng, rng2, cnt, hash;
     uint64_t clock;
@@ -703,6 +718,28 @@ static void ls_detail_dump(uint32_t from, uint32_t to)
             for (j = 0; j < c && j < LS_RAND_N && n > 0 && n < (int)sizeof line - 12; j++)
                 n += snprintf(line + n, sizeof line - (size_t)n, " %s%06X", (r[j] >> 31) ? "*" : "",
                               (unsigned)(r[j] & 0x7FFFFFFFu));
+            fprintf(stderr, "%s\n", line);
+        }
+        if (s_pad_seen[f % LS_DETAIL_N].f == f + 1) {
+            /* each port's pad (buttons, the 8 analog buttons, the sticks;
+             * the mouse's counts), as the game read it first */
+            n = snprintf(line, sizeof line, "[LS]     pads:");
+            for (k = 0; k < 4 && n > 0 && n < (int)sizeof line - 70; k++) {
+                const uint8_t *pd = s_pad_seen[f % LS_DETAIL_N].pad[k];
+                int16_t lx, ly, rx, ry, mx, my;
+                uint16_t bt;
+                if (!(s_pad_seen[f % LS_DETAIL_N].had & (1u << k)))
+                    continue;
+                memcpy(&bt, pd, 2);
+                memcpy(&lx, pd + 10, 2);
+                memcpy(&ly, pd + 12, 2);
+                memcpy(&rx, pd + 14, 2);
+                memcpy(&ry, pd + 16, 2);
+                memcpy(&mx, pd + LSN_MOUSE, 2);
+                memcpy(&my, pd + LSN_MOUSE + 2, 2);
+                n += snprintf(line + n, sizeof line - (size_t)n, " %u:%04X %d,%d %d,%d m%d,%d", k + 1, bt, lx, ly,
+                              rx, ry, mx, my);
+            }
             fprintf(stderr, "%s\n", line);
         }
     }
@@ -1357,6 +1394,7 @@ static uint32_t ls_net_ports_mask(void)
     return (1u << s_players) - 1u;
 }
 
+
 static void ls_net_state(int port, uint32_t frame, uint8_t *out)
 {
     uint32_t k = frame % LSN_RING, pk;
@@ -1365,6 +1403,17 @@ static void ls_net_state(int port, uint32_t frame, uint8_t *out)
         memcpy(pad, s_in[k][port], LSN_PAD);
     else
         memset(pad, 0, LSN_PAD);
+    {
+        uint32_t d = frame % LS_DETAIL_N;
+        if (s_pad_seen[d].f != frame + 1) {
+            s_pad_seen[d].f = frame + 1;
+            s_pad_seen[d].had = 0;
+        }
+        if (!(s_pad_seen[d].had & (1u << (port & 3)))) {
+            s_pad_seen[d].had |= (uint8_t)(1u << (port & 3));
+            memcpy(s_pad_seen[d].pad[port & 3], pad, LSN_PAD);
+        }
+    }
     pk = ++s_pkt_cur[port];
     memcpy(out, &pk, 4);
     memcpy(out + 4, pad, LSN_GAMEPAD);
@@ -2096,6 +2145,7 @@ void rdr_ls_frame(uint32_t ret)
     last_ret = ret;
     was_loading = loading;
     s_press_loop = loading && ret == 0x00068685u;
+    s_frame_in_step = !loading;
     if (loading)
         return;                         /* not a lockstep frame */
     s_lsf++;
