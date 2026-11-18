@@ -3412,6 +3412,25 @@ the rest of the frame thrown away, and no step at all when the
     with a parting forced (RDR_LS_SIM_DESYNC=150) dumps the pads; the
     level's start was not reached.
 
+249. **Online: the guest's game had no pad for its own player.** Both PCs
+    on the same build (the lobby silent) parted at 1590. With 248's pads
+    in the dump: on the host the game read both ports' pads, every frame
+    zero; on the guest it read port 1's alone. From 1572, the first frame
+    of play, player 2 walked off on the guest (-12.9021 ... -12.3256) and
+    stood on the host. The guest's game never had player 2's pad in: the
+    first XGetDeviceChanges (rdr_ls_device_changes) is answered once with
+    every player's port, but a guest knows how many play only once the
+    host's WELCOME arrives ("joined: player 2 of 2", just before frame 1),
+    long after the game's first look; until then s_players is 1. So on
+    the guest player 2 had no controller (the game walks such a player),
+    and the guest's own presses moved it on the other PCs alone: "the
+    client is moving on their own". The harness had it too (the guest's
+    dump read port 1 alone). The lobby now passes the count
+    (RDR_LS_PLAYERS), and a port that joins later is answered at the next
+    look ("pads N arrive late"). Harness: with the count, the guest's dump
+    reads both ports; without it, port 2 arrives late at frame 1, and
+    then both are read.
+
 ## Settings, launcher, overlay (src/ui)
 
 - `settings.ini` (rdr_settings.c) becomes RECOMP_* switches at start-up.

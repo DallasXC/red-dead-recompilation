@@ -743,6 +743,10 @@ static void launch(void)
         snprintf(val, sizeof val, "%d", L.me);
         env_set("RDR_LS_SLOT", val);
     }
+    /* how many play: a guest's game learned it from the host only once
+     * joined, after the game had asked which pads are in (249) */
+    snprintf(val, sizeof val, "%d", L.players);
+    env_set("RDR_LS_PLAYERS", val);
     rdr_sock_close(L.sock);
     L.sock = -1;
     relaunch();

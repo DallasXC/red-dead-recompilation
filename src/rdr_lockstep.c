@@ -195,10 +195,19 @@ int rdr_ls_device_changes(uint32_t ins_va, uint32_t rem_va, uint32_t *ret)
     LsFrame *e;
     if (rdr_lockstep_mode() == 4) {
         /* online: every player's pad arrives at the first look, on every
-         * machine alike */
-        static int told;
-        uint32_t ins = told ? 0u : ls_net_ports_mask(), zero = 0;
-        told = 1;
+         * machine alike. (A guest knew how many play only once joined,
+         * after the game's first look: its game had player 1's pad alone,
+         * and player 2's character there, with no pad, walked by itself,
+         * on that PC only; the games parted as the level began, and the
+         * guest's own player never answered it: "the client is moving on
+         * their own". The lobby now passes the count, RDR_LS_PLAYERS; and
+         * a pad that joins later arrives at the next look.) */
+        static uint32_t told;
+        uint32_t ins = ls_net_ports_mask() & ~told, zero = 0;
+        if (ins && told)
+            fprintf(stderr, "[LS] frame %u: pads %X arrive late (the players' count came after the first look)\n",
+                    f, (unsigned)ins);
+        told |= ins;
         memcpy(gm(ins_va), &ins, 4);
         memcpy(gm(rem_va), &zero, 4);
         *ret = ins ? 1u : 0u;
@@ -1367,6 +1376,10 @@ static void ls_net_start(const char *host, const char *join)
         s_ns = rdr_sock_open((uint16_t)port);
     } else {
         s_me = -1;
+        /* the lobby's count (RDR_LS_PLAYERS), so the pads are all in from
+         * the first look, as on the host (249) */
+        if ((e = getenv("RDR_LS_PLAYERS")) && atoi(e) >= 2 && atoi(e) <= 4)
+            s_players = atoi(e);
         s_ns = rdr_sock_open(0);
         if (rdr_addr_parse(join, &s_host_addr) != 0) {
             fprintf(stderr, "[LS] cannot find %s\n", join);

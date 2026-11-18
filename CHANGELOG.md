@@ -67,6 +67,12 @@ items).
   player's camera on that player's PC but not on the others, so the
   player seemed to move by themselves and the games fell out of step.
   Each PC now handles the mouse on the same frames (248).
+- **Online: the friend's game has their controller again.** On the
+  joining PC, the game could start before it knew how many were playing,
+  and then had no controller for that player: their character walked by
+  itself there, and the games fell out of step as the level began. The
+  lobby now tells every PC the number of players before the game starts
+  (249).
 - **Online: games no longer part right at the start.** Every PC plugged
   as many controllers into its virtual console as it had set up (three on
   one, two on the other), and the console started up differently: the
